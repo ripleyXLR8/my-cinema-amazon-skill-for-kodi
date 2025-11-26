@@ -1,0 +1,246 @@
+{
+    "interactionModel": {
+        "languageModel": {
+            "invocationName": "mon cinéma",
+            "intents": [
+                {
+                    "name": "AMAZON.CancelIntent",
+                    "samples": []
+                },
+                {
+                    "name": "AMAZON.HelpIntent",
+                    "samples": []
+                },
+                {
+                    "name": "AMAZON.StopIntent",
+                    "samples": []
+                },
+                {
+                    "name": "AMAZON.NavigateHomeIntent",
+                    "samples": []
+                },
+                {
+                    "name": "PlayMovieIntent",
+                    "slots": [
+                        {
+                            "name": "MovieName",
+                            "type": "AMAZON.Movie"
+                        },
+                        {
+                            "name": "MovieYear",
+                            "type": "AMAZON.FOUR_DIGIT_NUMBER"
+                        },
+                        {
+                            "name": "SourceMode",
+                            "type": "SourceMode"
+                        }
+                    ],
+                    "samples": [
+                        "joue le film {MovieName}",
+                        "joue le film {MovieName} {SourceMode}",
+                        "lance le film {MovieName}",
+                        "lance le film {MovieName} {SourceMode}",
+                        "mets le film {MovieName}",
+                        "mets le film {MovieName} {SourceMode}",
+                        "démarre le film {MovieName}",
+                        "démarre le film {MovieName} {SourceMode}",
+                        "regarder le film {MovieName}",
+                        "regarder le film {MovieName} {SourceMode}",
+                        "je veux voir le film {MovieName}",
+                        "je veux voir le film {MovieName} {SourceMode}",
+                        "lance le film {MovieName} de {MovieYear}",
+                        "lance le film {MovieName} de {MovieYear} {SourceMode}",
+                        "trouve le film {MovieName}",
+                        "trouve le film {MovieName} {SourceMode}",
+                        "affiche le film {MovieName}",
+                        "affiche le film {MovieName} {SourceMode}"
+                    ]
+                },
+                {
+                    "name": "PlayTVShowIntent",
+                    "slots": [
+                        {
+                            "name": "ShowName",
+                            "type": "AMAZON.TVSeries"
+                        },
+                        {
+                            "name": "Season",
+                            "type": "AMAZON.NUMBER"
+                        },
+                        {
+                            "name": "Episode",
+                            "type": "AMAZON.NUMBER"
+                        },
+                        {
+                            "name": "SourceMode",
+                            "type": "SourceMode"
+                        }
+                    ],
+                    "samples": [
+                        "joue {ShowName}",
+                        "joue {ShowName} {SourceMode}",
+                        "joue la série {ShowName}",
+                        "joue la série {ShowName} {SourceMode}",
+                        "joue l'épisode {Episode} de la saison {Season} de {ShowName}",
+                        "joue l'épisode {Episode} de la saison {Season} de {ShowName} {SourceMode}",
+                        "lance {ShowName}",
+                        "lance {ShowName} {SourceMode}",
+                        "lance la série {ShowName}",
+                        "lance la série {ShowName} {SourceMode}",
+                        "lance l'épisode {Episode} de la saison {Season} de {ShowName}",
+                        "lance l'épisode {Episode} de la saison {Season} de {ShowName} {SourceMode}",
+                        "mets {ShowName}",
+                        "mets {ShowName} {SourceMode}",
+                        "mets la série {ShowName}",
+                        "mets la série {ShowName} {SourceMode}",
+                        "mets l'épisode {Episode} de la saison {Season} de {ShowName}",
+                        "mets l'épisode {Episode} de la saison {Season} de {ShowName} {SourceMode}",
+                        "démarre {ShowName}",
+                        "démarre {ShowName} {SourceMode}",
+                        "démarre la série {ShowName}",
+                        "démarre la série {ShowName} {SourceMode}",
+                        "démarre l'épisode {Episode} de la saison {Season} de {ShowName}",
+                        "démarre l'épisode {Episode} de la saison {Season} de {ShowName} {SourceMode}",
+                        "regarder {ShowName}",
+                        "regarder {ShowName} {SourceMode}",
+                        "regarder la série {ShowName}",
+                        "regarder la série {ShowName} {SourceMode}",
+                        "regarder l'épisode {Episode} de la saison {Season} de {ShowName}",
+                        "regarder l'épisode {Episode} de la saison {Season} de {ShowName} {SourceMode}",
+                        "je veux voir {ShowName}",
+                        "je veux voir {ShowName} {SourceMode}",
+                        "je veux voir la série {ShowName}",
+                        "je veux voir la série {ShowName} {SourceMode}",
+                        "je veux voir l'épisode {Episode} de la saison {Season} de {ShowName}",
+                        "je veux voir l'épisode {Episode} de la saison {Season} de {ShowName} {SourceMode}",
+                        "{ShowName} saison {Season} épisode {Episode}",
+                        "{ShowName} saison {Season} épisode {Episode} {SourceMode}",
+                        "saison {Season} épisode {Episode} de {ShowName}",
+                        "saison {Season} épisode {Episode} de {ShowName} {SourceMode}"
+                    ]
+                },
+                {
+                    "name": "AMAZON.YesIntent",
+                    "samples": []
+                },
+                {
+                    "name": "LatestEpisodeIntent",
+                    "slots": [],
+                    "samples": [
+                        "le dernier",
+                        "le dernier épisode",
+                        "le plus récent",
+                        "le dernier sorti",
+                        "le dernier diffusé",
+                        "lance le dernier",
+                        "mets le dernier",
+                        "le tout dernier"
+                    ]
+                },
+                {
+                    "name": "ResumeTVShowIntent",
+                    "slots": [
+                        {
+                            "name": "ShowName",
+                            "type": "AMAZON.TVSeries"
+                        },
+                        {
+                            "name": "SourceMode",
+                            "type": "SourceMode"
+                        }
+                    ],
+                    "samples": [
+                        "Reprends {ShowName}",
+                        "Reprends {ShowName} {SourceMode}",
+                        "Reprends la série {ShowName}",
+                        "Reprends la série {ShowName} {SourceMode}",
+                        "Continue {ShowName}",
+                        "Continue {ShowName} {SourceMode}",
+                        "Continue la série {ShowName}",
+                        "Continue la série {ShowName} {SourceMode}",
+                        "Continue de jouer {ShowName}",
+                        "Continue de jouer {ShowName} {SourceMode}",
+                        "Relance {ShowName}",
+                        "Relance {ShowName} {SourceMode}",
+                        "Remets {ShowName}",
+                        "Remets {ShowName} {SourceMode}",
+                        "Mets la suite de {ShowName}",
+                        "Mets la suite de {ShowName} {SourceMode}",
+                        "Lance la suite de {ShowName}",
+                        "Lance la suite de {ShowName} {SourceMode}",
+                        "Je veux reprendre {ShowName}",
+                        "Je veux reprendre {ShowName} {SourceMode}",
+                        "Je veux continuer {ShowName}",
+                        "Je veux continuer {ShowName} {SourceMode}",
+                        "Je voudrais regarder la suite de {ShowName}",
+                        "Je voudrais regarder la suite de {ShowName} {SourceMode}",
+                        "J'aimerais reprendre l'épisode de {ShowName}",
+                        "J'aimerais reprendre l'épisode de {ShowName} {SourceMode}",
+                        "On continue {ShowName}",
+                        "On continue {ShowName} {SourceMode}",
+                        "La suite de {ShowName}",
+                        "La suite de {ShowName} {SourceMode}",
+                        "L'épisode suivant de {ShowName}",
+                        "L'épisode suivant de {ShowName} {SourceMode}",
+                        "Le prochain épisode de {ShowName}",
+                        "Le prochain épisode de {ShowName} {SourceMode}",
+                        "Reprendre la lecture de {ShowName}",
+                        "Reprendre la lecture de {ShowName} {SourceMode}",
+                        "Continuer à regarder {ShowName}",
+                        "Continuer à regarder {ShowName} {SourceMode}",
+                        "Voir la suite de {ShowName}",
+                        "Voir la suite de {ShowName} {SourceMode}",
+                        "Où en est {ShowName}",
+                        "Où en est {ShowName} {SourceMode}"
+                    ]
+                },
+                {
+                    "name": "ReprendreIntent",
+                    "slots": [],
+                    "samples": [
+                        "Oui reprendre",
+                        "Continuer",
+                        "Reprendre"
+                    ]
+                }
+            ],
+            "types": [
+                {
+                    "name": "SourceMode",
+                    "values": [
+                        {
+                            "name": {
+                                "value": "manuellement"
+                            }
+                        },
+                        {
+                            "name": {
+                                "value": "en manuel"
+                            }
+                        },
+                        {
+                            "name": {
+                                "value": "avec choix"
+                            }
+                        },
+                        {
+                            "name": {
+                                "value": "en sélectionnant"
+                            }
+                        },
+                        {
+                            "name": {
+                                "value": "le choix des sources"
+                            }
+                        },
+                        {
+                            "name": {
+                                "value": "liste"
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+}
