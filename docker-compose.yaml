@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  kodi-alexa-skill:
+    build: .
+    container_name: kodi-fenlight-alexa-skill
+    restart: unless-stopped
+    network_mode: host  # Required for WoL to work
+    environment:
+      - TZ=Europe/Paris
+      - PYTHONUNBUFFERED=1
+      
+      # --- SHIELD CONFIG ---
+      - SHIELD_IP=192.168.1.x
+      - SHIELD_MAC=AA:BB:CC:DD:EE:FF
+      
+      # --- KODI CONFIG ---
+      - KODI_PORT=8080
+      - KODI_USER=kodi
+      - KODI_PASS=kodi
+      
+      # --- API KEYS ---
+      - TMDB_API_KEY=your_tmdb_api_key
+      
+      # --- TRAKT.TV ---
+      - TRAKT_CLIENT_ID=your_trakt_client_id
+      - TRAKT_ACCESS_TOKEN=your_trakt_access_token
+
+      # --- TMDB HELPER PLAYERS (Must match filenames on Shield including .json) ---
+      - PLAYER_DEFAULT=fenlight_auto.json
+      - PLAYER_SELECT=fenlight_select.json
+      
+      # --- DEBUG ---
+      - DEBUG_MODE=false
