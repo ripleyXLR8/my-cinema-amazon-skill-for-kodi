@@ -17,7 +17,7 @@ This project features intelligent power management (ADB/WoL), TMDB series and mo
 
 ## 🎥 Demo
 
-See the skill in action (French language demo):
+See the skill in action (French language demo) :
 
 https://github.com/user-attachments/assets/da996a8d-55bf-4b13-b84a-542da01ceb5d
 
