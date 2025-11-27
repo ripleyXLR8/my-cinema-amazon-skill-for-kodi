@@ -15,6 +15,12 @@
 
 This project features intelligent power management (ADB/WoL), TMDB series and movie lookup, Trakt.tv resume sync, and automated Fen Light add-on patching to allow use by external players (TMDB Helper).
 
+## 🎥 Demo
+
+See the skill in action (French language demo):
+
+[![Watch the demo](https://img.youtube.com/vi/S-MiSGNx5Hs/0.jpg)](https://youtu.be/S-MiSGNx5Hs)
+
 ## ✨ Key Features
 
 * **🗣️ Multi-Language Voice Control:** Supports **English** and **French** natively. The skill detects the language of the request and responds accordingly.
