@@ -7,7 +7,7 @@
 ![Vibe Coding](https://img.shields.io/badge/Built%20with-Google%20Gemini-8E75B2)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-orange?logo=buymeacoffee&logoColor=white)](https://buymeacoffee.com/ripleyxlr8)
 
-**Dockerized self hosted Alexa skill to start movies or series with your favorite Kodi (running on Nvidia Shield) add-on (like FenLight, Umbrella, etc...) using TMDBHelper as and abstraction layer.**
+**Dockerized self hosted Alexa skill to start movies or series using voice control with your favorite Kodi add-on running on Nvidia Shield like FenLight, Umbrella, etc... using TMDBHelper as and abstraction layer.**
 
 This project features intelligent power management (ADB/WoL), TMDB series and movie lookup, Trakt.tv resume sync, and automated Fen Light add-on patching to allow use by external players (TMDB Helper).
 
