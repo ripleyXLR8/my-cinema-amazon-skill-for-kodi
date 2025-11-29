@@ -1,12 +1,13 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 1.4.5
-# DATE    : 2025-11-27 14:00:00 (CET)
+# VERSION : 1.4.6
+# DATE    : 2025-11-29 14:40:00 (CET)
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
 # DESCRIPTION : 
 # Skill Alexa pour contrôle vocal de Kodi sur Nvidia Shield.
-# UPDATE v1.4.5 : Restauration complète de la bannière de démarrage (Auteur/Date).
+# UPDATE v1.4.6 : Augmentation des timeouts ADB (5s) pour éviter les échecs
+# de réveil sur les systèmes lents ou chargés.
 # ==============================================================================
 
 from flask import Flask, request, jsonify
@@ -185,16 +186,21 @@ def wake_and_start_kodi():
     except Exception as e: logger.error(f"[POWER] Erreur WoL: {e}")
 
     try:
-        subprocess.run(["adb", "connect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3)
-        subprocess.run(["adb", "shell", "input", "keyevent", "WAKEUP"], stdout=subprocess.DEVNULL, timeout=2)
+        # Increase connection timeout to 5s
+        subprocess.run(["adb", "connect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+        # Increase wake command timeout to 5s
+        subprocess.run(["adb", "shell", "input", "keyevent", "WAKEUP"], stdout=subprocess.DEVNULL, timeout=5)
         time.sleep(0.5)
-        subprocess.run(["adb", "shell", "input", "keyevent", "WAKEUP"], stdout=subprocess.DEVNULL, timeout=2)
+        # Increase second wake command timeout to 5s
+        subprocess.run(["adb", "shell", "input", "keyevent", "WAKEUP"], stdout=subprocess.DEVNULL, timeout=5)
     except Exception as e: logger.error(f"[POWER] Erreur ADB: {e}")
 
     if is_kodi_responsive(): return True
 
     logger.info("[POWER] Lancement de Kodi...")
-    try: subprocess.run(["adb", "shell", "am", "start", "-n", "org.xbmc.kodi/.Splash"], stdout=subprocess.DEVNULL, timeout=3)
+    try: 
+        # Increase app launch timeout to 5s
+        subprocess.run(["adb", "shell", "am", "start", "-n", "org.xbmc.kodi/.Splash"], stdout=subprocess.DEVNULL, timeout=5)
     except: pass
 
     for i in range(45):
@@ -206,7 +212,7 @@ def wake_and_start_kodi():
     
     logger.error("[POWER] Echec : Kodi ne répond pas.")
     return False
-
+    
 # ==========================================
 # 4. HELPERS
 # ==========================================
