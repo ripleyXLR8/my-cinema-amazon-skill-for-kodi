@@ -1,13 +1,13 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 1.6.2
-# DATE    : 2025-12-05 18:00:00 (CET)
+# VERSION : 1.7.3
+# DATE    : 2026-01-19 21:30:00 (CET)
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
 # DESCRIPTION : 
 # Skill Alexa pour contrôle vocal de Kodi sur Nvidia Shield.
-# UPDATE v1.6.2 : Amélioration de l'Auto-Patcher. Il détecte maintenant si le 
-# patch est déjà appliqué ou si la version du fichier cible est incompatible.
+# UPDATE v1.7.3 : Ajout de la commande vocale pour déclencher manuellement 
+# le patcher (TriggerPatcherIntent) via un thread dédié.
 # ==============================================================================
 
 from flask import Flask, request, jsonify
@@ -30,8 +30,8 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "1.6.2"
-APP_DATE = "2025-12-05"
+APP_VERSION = "1.7.3"
+APP_DATE = "2026-01-19"
 APP_AUTHOR = "Richard Perez"
 
 app = Flask(__name__)
@@ -148,7 +148,7 @@ def refresh_trakt_token_online():
     return None
 
 # ==========================================
-# 3. TRADUCTIONS & PATCHER (UPDATED v1.6.2)
+# 3. TRADUCTIONS & PATCHER
 # ==========================================
 TRANSLATIONS = {}
 
@@ -174,10 +174,8 @@ def get_text(key, lang="fr", *args):
     return text_template
 
 def check_and_patch_fenlight():
-    """Vérifie et patche kodi_utils.py de manière intelligente."""
     if not SHIELD_IP: return
     if DEBUG_MODE: logger.info(f"[PATCHER] Vérification intégrité Fen Light (kodi_utils.py)...")
-    
     try:
         subprocess.run(["adb", "disconnect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(["adb", "connect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
@@ -195,56 +193,45 @@ def check_and_patch_fenlight():
     try:
         with open(FENLIGHT_LOCAL_TEMP, 'r', encoding='utf-8') as f: content = f.read()
         
-        # Définition des signatures
+        # Signatures
         TARGET_1_ORIG = "if mode == 'playback.%s' % playback_key():"
         TARGET_1_PATCH = "if True: # mode == 'playback.%s' % playback_key():"
-        
         TARGET_2_ORIG = "if not playback_key() in params:"
         TARGET_2_PATCH = "if False: # not playback_key() in params:"
         
-        # Analyse de l'état du fichier
         has_patch_1 = TARGET_1_PATCH in content
         has_patch_2 = TARGET_2_PATCH in content
         has_orig_1 = TARGET_1_ORIG in content
         has_orig_2 = TARGET_2_ORIG in content
         
-        # Cas 1 : Déjà Patché
         if has_patch_1 and has_patch_2:
             if DEBUG_MODE: logger.info("[PATCHER] OK : Fichier déjà patché.")
             return
 
-        # Cas 2 : Version inconnue ou incompatible
         if not has_orig_1 and not has_patch_1:
-             logger.warning("[PATCHER] ALERTE : Code 'player_check' introuvable ! Version de Fen Light incompatible ?")
+             logger.warning("[PATCHER] ALERTE : Code 'player_check' introuvable !")
              return
         if not has_orig_2 and not has_patch_2:
-             logger.warning("[PATCHER] ALERTE : Code 'external_playback_check' introuvable ! Version de Fen Light incompatible ?")
+             logger.warning("[PATCHER] ALERTE : Code 'external_playback_check' introuvable !")
              return
 
-        # Cas 3 : Application du Patch
         new_content = content
         patched = False
         
         if has_orig_1:
-            logger.info("[PATCHER] Verrou 'player_check' détecté. Application du patch...")
             new_content = new_content.replace(TARGET_1_ORIG, TARGET_1_PATCH)
             patched = True
-            
         if has_orig_2:
-            logger.info("[PATCHER] Verrou 'external_playback_check' détecté. Application du patch...")
             new_content = new_content.replace(TARGET_2_ORIG, TARGET_2_PATCH)
             patched = True
         
         if patched:
             with open(FENLIGHT_LOCAL_TEMP, 'w', encoding='utf-8') as f: f.write(new_content)
             push_res = subprocess.run(["adb", "push", FENLIGHT_LOCAL_TEMP, FENLIGHT_UTILS_REMOTE_PATH], capture_output=True)
-            if push_res.returncode == 0:
-                logger.info("[PATCHER] SUCCÈS : Patchs appliqués sur kodi_utils.py.")
-            else:
-                logger.error("[PATCHER] ÉCHEC : Impossible d'écrire sur la Shield.")
+            if push_res.returncode == 0: logger.info("[PATCHER] SUCCÈS : Patchs appliqués sur kodi_utils.py.")
+            else: logger.error("[PATCHER] ÉCHEC : Impossible d'écrire sur la Shield.")
             
-    except Exception as e:
-        logger.error(f"[PATCHER] Erreur: {e}")
+    except Exception as e: logger.error(f"[PATCHER] Erreur: {e}")
 
 def patcher_scheduler():
     while True:
@@ -289,8 +276,6 @@ def wake_and_start_kodi():
 # ==========================================
 def verify_api_status():
     logger.info("--- VÉRIFICATION DES ACCÈS API ---")
-    
-    # TMDB
     if not TMDB_API_KEY: logger.error("[API] TMDB_API_KEY manquant !")
     else:
         try:
@@ -299,47 +284,75 @@ def verify_api_status():
             else: logger.warning(f"[API] TMDB : Erreur ({r.status_code})")
         except: logger.error("[API] TMDB : Injoignable")
 
-    # TRAKT
     token = load_trakt_token()
-    if not token or not TRAKT_CLIENT_ID:
-        logger.error("[API] TRAKT : Token manquant !")
+    if not token or not TRAKT_CLIENT_ID: logger.error("[API] TRAKT : Token manquant !")
     else:
         headers = {'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': TRAKT_CLIENT_ID, 'Authorization': f'Bearer {token}'}
         try:
             r = requests.get("https://api.trakt.tv/users/settings", headers=headers, timeout=5)
-            if r.status_code == 200:
-                logger.info("[API] TRAKT : Token OK ✅")
+            if r.status_code == 200: logger.info("[API] TRAKT : Token OK ✅")
             elif r.status_code == 401:
-                logger.warning("[API] TRAKT : Token expiré (401). Tentative de renouvellement immédiat...")
-                new_token = refresh_trakt_token_online()
-                if new_token: logger.info("[API] TRAKT : Token renouvelé avec succès ! ✅")
-                else: logger.critical("[API] TRAKT : Echec du renouvellement ❌")
-            else:
-                logger.warning(f"[API] TRAKT : Statut {r.status_code}")
+                logger.warning("[API] TRAKT : Token expiré. Renouvellement...")
+                if refresh_trakt_token_online(): logger.info("[API] TRAKT : Renouvellement OK ✅")
+                else: logger.critical("[API] TRAKT : Echec renouvellement ❌")
+            else: logger.warning(f"[API] TRAKT : Statut {r.status_code}")
         except: logger.error("[API] TRAKT : Injoignable")
     logger.info("-" * 30)
 
 # ==========================================
-# 6. HELPERS
+# 6. HELPERS (KODI CONTROL & TMDB)
 # ==========================================
 
+# --- KODI INTROSPECTION ---
+def get_kodi_active_player():
+    """Récupère l'ID du lecteur actif (1=Vidéo)."""
+    payload = {"jsonrpc": "2.0", "method": "Player.GetActivePlayers", "id": 1}
+    try:
+        auth = (KODI_USER, KODI_PASS) if KODI_USER and KODI_PASS else None
+        r = requests.post(KODI_BASE_URL, json=payload, auth=auth, timeout=3)
+        data = r.json().get('result', [])
+        for player in data:
+            if player.get('type') == 'video':
+                return player.get('playerid')
+    except: pass
+    return None
+
+def get_kodi_player_item(player_id):
+    """Récupère les infos du média en cours."""
+    payload = {
+        "jsonrpc": "2.0", 
+        "method": "Player.GetItem", 
+        "params": { 
+            "properties": ["title", "year", "season", "episode", "showtitle"], 
+            "playerid": player_id 
+        }, 
+        "id": 1
+    }
+    try:
+        auth = (KODI_USER, KODI_PASS) if KODI_USER and KODI_PASS else None
+        r = requests.post(KODI_BASE_URL, json=payload, auth=auth, timeout=3)
+        return r.json().get('result', {}).get('item')
+    except: pass
+    return None
+
+def stop_kodi_playback(player_id):
+    """Arrête la lecture en cours."""
+    payload = {"jsonrpc": "2.0", "method": "Player.Stop", "params": {"playerid": player_id}, "id": 1}
+    try:
+        auth = (KODI_USER, KODI_PASS) if KODI_USER and KODI_PASS else None
+        requests.post(KODI_BASE_URL, json=payload, auth=auth, timeout=3)
+        logger.info("[KODI] Lecture arrêtée.")
+    except: pass
+
+# --- TRAKT & TMDB ---
 def get_trakt_next_episode(tmdb_show_id):
     current_token = load_trakt_token()
-    if not TRAKT_CLIENT_ID or not current_token:
-        logger.warning("[TRAKT] Token manquant.")
-        return None, None
-    
-    headers = {
-        'Content-Type': 'application/json', 
-        'trakt-api-version': '2', 
-        'trakt-api-key': TRAKT_CLIENT_ID, 
-        'Authorization': f'Bearer {current_token}'
-    }
+    if not TRAKT_CLIENT_ID or not current_token: return None, None
+    headers = {'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': TRAKT_CLIENT_ID, 'Authorization': f'Bearer {current_token}'}
     
     def make_request(url):
         r = requests.get(url, headers=headers, timeout=2)
         if r.status_code == 401:
-            logger.warning("[TRAKT] 401 Unauthorized détecté pendant l'appel. Renouvellement...")
             new_t = refresh_trakt_token_online()
             if new_t:
                 headers['Authorization'] = f'Bearer {new_t}'
@@ -347,31 +360,26 @@ def get_trakt_next_episode(tmdb_show_id):
         return r
 
     try:
-        search_url = f"https://api.trakt.tv/search/tmdb/{tmdb_show_id}?type=show"
-        r = make_request(search_url)
+        r = make_request(f"https://api.trakt.tv/search/tmdb/{tmdb_show_id}?type=show")
         if r.status_code != 200: return None, None
         results = r.json()
         if not results: return None, None
         trakt_id = results[0]['show']['ids']['trakt']
         
-        progress_url = f"https://api.trakt.tv/shows/{trakt_id}/progress/watched"
-        r = make_request(progress_url)
+        r = make_request(f"https://api.trakt.tv/shows/{trakt_id}/progress/watched")
         if r.status_code != 200: return None, None
-        data = r.json()
-        next_ep = data.get('next_episode')
+        next_ep = r.json().get('next_episode')
         if next_ep: return next_ep['season'], next_ep['number']
-    except Exception as e:
-        logger.error(f"[TRAKT] Exception : {e}")
+    except: pass
     return None, None
 
 def search_tmdb_movie(query, year=None, lang="fr"):
     if not TMDB_API_KEY: return None, None, None
     tmdb_lang = "fr-FR" if lang == "fr" else "en-US"
-    base_url = "https://api.themoviedb.org/3/search/movie"
     params = {"api_key": TMDB_API_KEY, "query": query, "language": tmdb_lang}
     if year: params['year'] = year
     try:
-        r = requests.get(base_url, params=params, timeout=2)
+        r = requests.get("https://api.themoviedb.org/3/search/movie", params=params, timeout=2)
         data = r.json()
         if data.get('results'):
             res = data['results'][0]
@@ -382,10 +390,9 @@ def search_tmdb_movie(query, year=None, lang="fr"):
 def search_tmdb_show(query, lang="fr"):
     if not TMDB_API_KEY: return None, None
     tmdb_lang = "fr-FR" if lang == "fr" else "en-US"
-    base_url = "https://api.themoviedb.org/3/search/tv"
     params = {"api_key": TMDB_API_KEY, "query": query, "language": tmdb_lang}
     try:
-        r = requests.get(base_url, params=params, timeout=2)
+        r = requests.get("https://api.themoviedb.org/3/search/tv", params=params, timeout=2)
         data = r.json()
         if data.get('results'):
             res = data['results'][0]
@@ -395,19 +402,16 @@ def search_tmdb_show(query, lang="fr"):
 
 def check_episode_exists(tmdb_id, season, episode):
     if not TMDB_API_KEY: return False
-    url = f"https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season}/episode/{episode}"
     try:
-        r = requests.get(url, params={"api_key": TMDB_API_KEY}, timeout=2)
+        r = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season}/episode/{episode}", params={"api_key": TMDB_API_KEY}, timeout=2)
         return r.status_code == 200
     except: return True
 
 def get_tmdb_last_aired(tmdb_id):
     if not TMDB_API_KEY: return None, None
-    url = f"https://api.themoviedb.org/3/tv/{tmdb_id}"
     try:
-        r = requests.get(url, params={"api_key": TMDB_API_KEY}, timeout=2)
-        data = r.json()
-        last_ep = data.get('last_episode_to_air')
+        r = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}", params={"api_key": TMDB_API_KEY}, timeout=2)
+        last_ep = r.json().get('last_episode_to_air')
         if last_ep: return last_ep['season_number'], last_ep['episode_number']
     except: pass
     return None, None
@@ -427,19 +431,19 @@ def worker_process(plugin_url):
     if not wake_and_start_kodi(): 
         logger.error(">>> ABANDON : Kodi injoignable.")
         return
-    
     logger.info(f"[KODI] Envoi URL : {plugin_url}")
     payload = {"jsonrpc": "2.0", "method": "Player.Open", "params": {"item": {"file": plugin_url}}, "id": 1}
     try:
         auth = (KODI_USER, KODI_PASS) if KODI_USER and KODI_PASS else None
-        r = requests.post(KODI_BASE_URL, json=payload, auth=auth, timeout=5)
-        if r.status_code == 200:
-            logger.info(f"[KODI] Réponse RPC : {r.json().get('result', 'OK')}")
-        else:
-            logger.error(f"[KODI] Erreur HTTP : {r.status_code}")
-    except Exception as e:
-        logger.error(f"[KODI] Exception : {e}")
+        requests.post(KODI_BASE_URL, json=payload, auth=auth, timeout=5)
+    except: pass
     logger.info(">>> FIN PROCESSUS LECTURE")
+
+def change_source_worker(player_id, next_url):
+    """Gère l'enchaînement Arrêt -> Pause -> Relance en arrière-plan."""
+    stop_kodi_playback(player_id)
+    time.sleep(2) # Laisser le temps à Kodi de revenir au menu
+    worker_process(next_url)
 
 # ==========================================
 # 7. ROUTE FLASK
@@ -470,7 +474,54 @@ def alexa_handler():
         force_select = True if slot_source_mode else attributes.get('force_select', False)
         manual_msg = get_text("manual_select", lang) if force_select else ""
 
-        if intent_name == "ResumeTVShowIntent":
+        # --- NOUVEL INTENT (v1.7.3) : PATCHER MANUEL ---
+        if intent_name == "TriggerPatcherIntent":
+            threading.Thread(target=check_and_patch_fenlight).start()
+            return jsonify(build_response(get_text("patcher_triggered", lang)))
+
+        # --- CHANGE SOURCE (v1.7.0) ---
+        elif intent_name == "ChangeSourceIntent":
+            if not is_kodi_responsive():
+                return jsonify(build_response(get_text("kodi_offline", lang), end_session=True))
+            
+            player_id = get_kodi_active_player()
+            item = get_kodi_player_item(player_id) if player_id is not None else None
+            
+            if not item:
+                return jsonify(build_response(get_text("nothing_playing", lang), end_session=True))
+            
+            # Extraction infos
+            media_type = item.get('type') # 'movie' ou 'episode'
+            title = item.get('title')
+            year = item.get('year')
+            
+            new_url = None
+            response_msg = ""
+
+            if media_type == 'movie':
+                tmdb_id, r_title, r_year = search_tmdb_movie(title, year=year, lang=lang)
+                if tmdb_id:
+                    new_url = get_playback_url(tmdb_id, "movie", force_select=True)
+                    response_msg = get_text("change_source_movie", lang, r_title)
+            
+            elif media_type == 'episode':
+                show_title = item.get('showtitle')
+                season = item.get('season')
+                episode = item.get('episode')
+                tmdb_id, r_show_name = search_tmdb_show(show_title, lang=lang)
+                if tmdb_id:
+                    new_url = get_playback_url(tmdb_id, "episode", season, episode, force_select=True)
+                    response_msg = get_text("change_source_episode", lang, r_show_name, season, episode)
+
+            if new_url:
+                # Lancement threadé pour libérer Alexa immédiatement
+                threading.Thread(target=change_source_worker, args=(player_id, new_url)).start()
+                return jsonify(build_response(response_msg))
+            else:
+                return jsonify(build_response(get_text("content_error", lang)))
+
+        # --- INTENTS EXISTANTS ---
+        elif intent_name == "ResumeTVShowIntent":
             query = slots.get('ShowName', {}).get('value')
             if not query: return jsonify(build_response(get_text("ask_show", lang), end_session=False))
             tmdb_id, title = search_tmdb_show(query, lang=lang)
@@ -561,17 +612,12 @@ def build_response(text, end_session=True, attributes={}):
 # --- STARTUP ---
 def print_startup_banner():
     masked_key = f"{TMDB_API_KEY[:4]}...{TMDB_API_KEY[-4:]}" if TMDB_API_KEY else "MISSING"
-    
-    # Check token status
     current_token = load_trakt_token()
-    if current_token:
-        masked_trakt = "Loaded (from file/env)"
-    else:
-        masked_trakt = "MISSING"
+    masked_trakt = "Loaded (from file/env)" if current_token else "MISSING"
 
     print("\n" + "="*50)
     print(f" KODI ALEXA CONTROLLER")
-    print(f" Version : {APP_VERSION} (Auto-Refresh + Smart Patcher)")
+    print(f" Version : {APP_VERSION} (Feature: Change Source Fix)")
     print(f" Date    : {APP_DATE}")
     print(f" Author  : {APP_AUTHOR}")
     print(f" Debug   : {'ON' if DEBUG_MODE else 'OFF'}")
