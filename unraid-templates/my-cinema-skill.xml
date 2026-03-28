@@ -7,26 +7,26 @@
   <Privileged>false</Privileged>
   <Support>https://github.com/ripleyxlr8/my-cinema-amazon-skill-for-kodi/issues</Support>
   <Project>https://github.com/ripleyxlr8/my-cinema-amazon-skill-for-kodi</Project>
-  <Overview>Une Skill Amazon dockerisée pour lancer des films ou des séries par commande vocale en utilisant l'add-on Kodi Fenlight (via TMBDHelper).</Overview>
+  <Overview>A dockerized Amazon Skill to start movies or series with voice control using the Kodi Fenlight add-on (via TMBDHelper).</Overview>
   <Category>MediaApp:Video MediaServer:Video</Category>
   <Icon>https://raw.githubusercontent.com/ripleyxlr8/my-cinema-amazon-skill-for-kodi/main/icon.png</Icon>
   <TemplateURL>https://raw.githubusercontent.com/ripleyxlr8/my-cinema-amazon-skill-for-kodi/main/unraid-templates/my-cinema-skill.xml</TemplateURL>
   
-  <Config Name="Appdata Config Path" Target="/app/data" Default="/mnt/user/appdata/kodi-alexa-skill/data" Mode="rw" Description="Stockage persistant pour les tokens Trakt" Type="Path" Display="always" Required="true" Mask="false"/>
+  <Config Name="Appdata Config Path" Target="/app/data" Default="/mnt/user/appdata/kodi-alexa-skill/data" Mode="rw" Description="Persistent storage for Trakt tokens" Type="Path" Display="always" Required="true" Mask="false"/>
   
-  <Config Name="Shield IP" Target="SHIELD_IP" Default="" Mode="" Description="Adresse IP de la Nvidia Shield" Type="Variable" Display="always" Required="true" Mask="false"/>
-  <Config Name="Shield MAC" Target="SHIELD_MAC" Default="" Mode="" Description="Adresse MAC de la Shield (pour le Wake-on-LAN)" Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Shield IP" Target="SHIELD_IP" Default="" Mode="" Description="Nvidia Shield IP address" Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Shield MAC" Target="SHIELD_MAC" Default="" Mode="" Description="Shield MAC address (for Wake-on-LAN)" Type="Variable" Display="always" Required="true" Mask="false"/>
   
-  <Config Name="TMDB API Key" Target="TMDB_API_KEY" Default="" Mode="" Description="Votre clé d'API TheMovieDB" Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="TMDB API Key" Target="TMDB_API_KEY" Default="" Mode="" Description="Your TheMovieDB API Key" Type="Variable" Display="always" Required="true" Mask="true"/>
   <Config Name="Trakt Client ID" Target="TRAKT_CLIENT_ID" Default="" Mode="" Description="Trakt.tv Client ID" Type="Variable" Display="always" Required="true" Mask="true"/>
   <Config Name="Trakt Access Token" Target="TRAKT_ACCESS_TOKEN" Default="" Mode="" Description="Trakt.tv Access Token" Type="Variable" Display="always" Required="true" Mask="true"/>
-  <Config Name="Trakt Refresh Token" Target="TRAKT_REFRESH_TOKEN" Default="" Mode="" Description="Trakt.tv Refresh Token (Optionnel)" Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="Trakt Refresh Token" Target="TRAKT_REFRESH_TOKEN" Default="" Mode="" Description="Trakt.tv Refresh Token (Optional)" Type="Variable" Display="always" Required="false" Mask="true"/>
   
-  <Config Name="Kodi Port" Target="KODI_PORT" Default="8080" Mode="" Description="Port Web de Kodi" Type="Variable" Display="advanced" Required="true" Mask="false"/>
-  <Config Name="Kodi User" Target="KODI_USER" Default="kodi" Mode="" Description="Utilisateur Kodi" Type="Variable" Display="advanced" Required="false" Mask="false"/>
-  <Config Name="Kodi Password" Target="KODI_PASS" Default="kodi" Mode="" Description="Mot de passe Kodi" Type="Variable" Display="advanced" Required="false" Mask="true"/>
+  <Config Name="Kodi Port" Target="KODI_PORT" Default="8080" Mode="" Description="Kodi Web Port" Type="Variable" Display="advanced" Required="true" Mask="false"/>
+  <Config Name="Kodi User" Target="KODI_USER" Default="kodi" Mode="" Description="Kodi User" Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Kodi Password" Target="KODI_PASS" Default="kodi" Mode="" Description="Kodi Password" Type="Variable" Display="advanced" Required="false" Mask="true"/>
   
-  <Config Name="Player Default" Target="PLAYER_DEFAULT" Default="fenlight_auto.json" Mode="" Description="Nom du fichier player auto" Type="Variable" Display="advanced" Required="false" Mask="false"/>
-  <Config Name="Player Select" Target="PLAYER_SELECT" Default="fenlight_select.json" Mode="" Description="Nom du fichier player manuel" Type="Variable" Display="advanced" Required="false" Mask="false"/>
-  <Config Name="Debug Mode" Target="DEBUG_MODE" Default="false" Mode="" Description="Activer le mode Debug (true/false)" Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Player Default" Target="PLAYER_DEFAULT" Default="fenlight_auto.json" Mode="" Description="Auto player filename" Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Player Select" Target="PLAYER_SELECT" Default="fenlight_select.json" Mode="" Description="Manual player filename" Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Debug Mode" Target="DEBUG_MODE" Default="false" Mode="" Description="Enable Debug mode (true/false)" Type="Variable" Display="advanced" Required="false" Mask="false"/>
 </Container>
