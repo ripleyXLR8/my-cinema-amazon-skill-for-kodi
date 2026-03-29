@@ -5,7 +5,7 @@
   <Registry>https://github.com/ripleyxlr8/my-cinema-amazon-skill-for-kodi/packages</Registry>
   <Network>host</Network>
   <Privileged>false</Privileged>
-  <Support>https://github.com/ripleyxlr8/my-cinema-amazon-skill-for-kodi/issues</Support>
+  <Support>https://forums.unraid.net/topic/197994-support-my-cinema-an-alexa-skill-to-control-fenlight-running-on-your-kodi-shield-based-media-center/</Support>
   <Project>https://github.com/ripleyxlr8/my-cinema-amazon-skill-for-kodi</Project>
   <Overview>A dockerized Amazon Skill to start movies or series with voice control using the Kodi Fenlight add-on (via TMBDHelper).</Overview>
   <Category>MediaApp:Video MediaServer:Video</Category>
