@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>MyCinema-Alexa-Kodi</Name>
-  <Repository>ghcr.io/ripleyxlr8/my-cinema-amazon-skill-for-kodi:latest</Repository>
+  <Repository>ghcr.io/ripleyxlr8/my-cinema-amazon-skill-for-kodi:main</Repository>
   <Registry>https://github.com/ripleyxlr8/my-cinema-amazon-skill-for-kodi/packages</Registry>
   <Network>host</Network>
   <Privileged>false</Privileged>
