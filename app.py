@@ -1,11 +1,12 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 1.7.3
-# DATE    : 2026-01-19 21:30:00 (CET)
+# VERSION : 1.7.4
+# DATE    : 2026-04-10 (CET)
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
 # DESCRIPTION : 
 # Skill Alexa pour contrôle vocal de Kodi sur Nvidia Shield.
+# UPDATE v1.7.4 : Ajout de la gestion du signal SIGTERM pour un arrêt immédiat sous Docker.
 # UPDATE v1.7.3 : Ajout de la commande vocale pour déclencher manuellement 
 # le patcher (TriggerPatcherIntent) via un thread dédié.
 # ==============================================================================
@@ -19,6 +20,7 @@ import os
 import sys
 import logging
 import json
+import signal
 from wakeonlan import send_magic_packet
 
 # --- CONFIGURATION LOGGING ---
@@ -30,8 +32,8 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "1.7.3"
-APP_DATE = "2026-01-19"
+APP_VERSION = "1.7.4"
+APP_DATE = "2026-04-10"
 APP_AUTHOR = "Richard Perez"
 
 app = Flask(__name__)
@@ -609,6 +611,15 @@ def alexa_handler():
 def build_response(text, end_session=True, attributes={}):
     return {"version": "1.0", "sessionAttributes": attributes, "response": {"outputSpeech": {"type": "PlainText", "text": text}, "shouldEndSession": end_session}}
 
+# ==========================================
+# 8. GESTION DE L'ARRÊT DU CONTENEUR
+# ==========================================
+def handle_sigterm(*args):
+    logger.info("Signal SIGTERM reçu d'Unraid/Docker. Fermeture de My Cinema...")
+    sys.exit(0)
+
+signal.signal(signal.SIGTERM, handle_sigterm)
+
 # --- STARTUP ---
 def print_startup_banner():
     masked_key = f"{TMDB_API_KEY[:4]}...{TMDB_API_KEY[-4:]}" if TMDB_API_KEY else "MISSING"
@@ -617,7 +628,7 @@ def print_startup_banner():
 
     print("\n" + "="*50)
     print(f" KODI ALEXA CONTROLLER")
-    print(f" Version : {APP_VERSION} (Feature: Change Source Fix)")
+    print(f" Version : {APP_VERSION} (Feature: SIGTERM Handling)")
     print(f" Date    : {APP_DATE}")
     print(f" Author  : {APP_AUTHOR}")
     print(f" Debug   : {'ON' if DEBUG_MODE else 'OFF'}")
