@@ -103,6 +103,40 @@ services:
 4.  **Interaction Model:** Create the Intents (`PlayMovieIntent`, `PlayTVShowIntent`, `ResumeTVShowIntent`) using the utterance lists provided in this repository's `speech_assets` folder.
 5.  **Slots:** Ensure you create a slot type named `SourceMode` to handle manual selection requests (values: "manually", "select source", "avec choix", etc.).
 
+### 4. 🔑 Trakt.tv Authentication Guide
+
+To use the Smart Resume feature, the skill needs access to your Trakt.tv account history. You will need to provide 4 specific keys in your Docker configuration (`TRAKT_CLIENT_ID`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`, and `TRAKT_REFRESH_TOKEN`). 
+
+Since this app runs locally, you must manually generate the initial tokens once. The skill will then automatically handle the future token renewals.
+
+**Step 1: Get your Client ID and Client Secret**
+1. Go to your [Trakt.tv API Apps](https://trakt.tv/oauth/apps) and click **New Application**.
+2. Name it whatever you like (e.g., "My Cinema Alexa").
+3. In the **Redirect URI** field, you **must** enter exactly: `urn:ietf:wg:oauth:2.0:oob`
+4. Save the app. Trakt will now display your **Client ID** and **Client Secret**.
+
+**Step 2: Get your PIN Code**
+1. Open a new browser tab and paste the following URL, replacing `YOUR_CLIENT_ID` with the ID from Step 1:
+   `https://trakt.tv/oauth/authorize?response_type=code&client_id=YOUR_CLIENT_ID&redirect_uri=urn:ietf:wg:oauth:2.0:oob`
+2. Click **Yes** to authorize your newly created app to access your account.
+3. Trakt will provide a long alphanumeric **PIN Code**. Copy it.
+
+**Step 3: Generate your Access and Refresh Tokens**
+Open a terminal (Linux/macOS) or PowerShell/Command Prompt (Windows) and run this `curl` command. Make sure to replace the placeholder values with your actual PIN, Client ID, and Client Secret:
+
+```bash
+curl -X POST [https://api.trakt.tv/oauth/token](https://api.trakt.tv/oauth/token) \
+-H "Content-Type: application/json" \
+-d '{
+  "code": "YOUR_PIN_CODE",
+  "client_id": "YOUR_CLIENT_ID",
+  "client_secret": "YOUR_CLIENT_SECRET",
+  "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
+  "grant_type": "authorization_code"
+}'
+```
+Result: The API will return a JSON response containing your "access_token" and "refresh_token". Copy these two values into your docker-compose.yaml (or Unraid template) along with your Client ID and Secret. You're all set forever!
+
 ## 🗣️ Usage Examples
 
 The skill automatically responds in the language used to invoke it.
