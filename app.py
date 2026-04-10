@@ -1,11 +1,12 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 1.7.4
-# DATE    : 2026-04-10 (CET)
+# VERSION : 1.7.5
+# DATE    : 2026-04-11 (CET)
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
 # DESCRIPTION : 
 # Skill Alexa pour contrôle vocal de Kodi sur Nvidia Shield.
+# UPDATE v1.7.5 : Ajout d'une route /health pour l'intégration du Healthcheck sous Docker/Unraid.
 # UPDATE v1.7.4 : Ajout de la gestion du signal SIGTERM pour un arrêt immédiat sous Docker.
 # UPDATE v1.7.3 : Ajout de la commande vocale pour déclencher manuellement 
 # le patcher (TriggerPatcherIntent) via un thread dédié.
@@ -32,8 +33,8 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "1.7.4"
-APP_DATE = "2026-04-10"
+APP_VERSION = "1.7.5"
+APP_DATE = "2026-04-11"
 APP_AUTHOR = "Richard Perez"
 
 app = Flask(__name__)
@@ -450,6 +451,11 @@ def change_source_worker(player_id, next_url):
 # ==========================================
 # 7. ROUTE FLASK
 # ==========================================
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Endpoint utilisé par Docker/Unraid pour vérifier que le conteneur est en vie."""
+    return jsonify({"status": "healthy", "version": APP_VERSION}), 200
 
 @app.route('/alexa-webhook', methods=['POST'])
 def alexa_handler():
