@@ -1,19 +1,19 @@
 name: Build and Publish Docker Image
 
 on:
-  push:
-    branches: [ "main", "master" ] # Se déclenche quand vous poussez sur la branche principale
+  release:
+    types: [published] # Se déclenche uniquement quand une release est publiée (manuellement ou par un autre bot)
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }} # ex: ripleyxlr8/my-cinema-amazon-skill-for-kodi
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-push-image:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write # Autorise GitHub à écrire dans le registre d'images
+      packages: write # Autorise GitHub à écrire dans le registre d'images GHCR
 
     steps:
       - name: Checkout repository
@@ -31,6 +31,8 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # L'action metadata-action est intelligente : si le déclencheur est une "release", 
+          # elle utilisera automatiquement le tag de cette release (ex: v1.7.6) pour l'image Docker !
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
