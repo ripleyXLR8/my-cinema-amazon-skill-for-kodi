@@ -1,0 +1,54 @@
+name: Fen Light Auto LLM Updater
+
+on:
+  schedule:
+    # Exécuter tous les jours à 03:00 UTC (à ajuster selon tes besoins)
+    - cron: '0 3 * * *'
+  workflow_dispatch: # Permet de le lancer manuellement depuis l'interface GitHub
+
+jobs:
+  llm-update-patcher:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests google-generativeai
+
+      - name: Run LLM Updater Script
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python scripts/llm_updater.py
+
+      - name: Check for changes
+        id: git-check
+        run: |
+          git diff --exit-code || echo "changes_detected=true" >> $GITHUB_OUTPUT
+
+      - name: Create Pull Request
+        if: steps.git-check.outputs.changes_detected == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "🤖 [Vibe Coding] Mise à jour des signatures de patch Fen Light"
+          title: "🤖 Mise à jour automatique : Nouvelles signatures Fen Light détectées"
+          body: |
+            Le script automatisé a détecté que le code source de Fen Light a changé.
+            L'IA a généré une mise à jour des variables de patching dans `app.py`.
+            
+            Veuillez vérifier les changements (diff) avant de merger. Le merge déclenchera automatiquement le build Docker vers GHCR !
+          branch: "bot/update-fenlight-signatures"
+          base: main
+          delete-branch: true
