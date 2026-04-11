@@ -38,17 +38,23 @@ jobs:
           git diff --exit-code || echo "changes_detected=true" >> $GITHUB_OUTPUT
 
       - name: Create Pull Request
+        id: cpr
         if: steps.git-check.outputs.changes_detected == 'true'
         uses: peter-evans/create-pull-request@v5
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT_TOKEN }}
           commit-message: "🤖 [Vibe Coding] Mise à jour des signatures de patch Fen Light"
           title: "🤖 Mise à jour automatique : Nouvelles signatures Fen Light détectées"
-          body: |
-            Le script automatisé a détecté que le code source de Fen Light a changé.
-            L'IA a généré une mise à jour des variables de patching dans `app.py`.
-            
-            Veuillez vérifier les changements (diff) avant de merger. Le merge déclenchera automatiquement le build Docker vers GHCR !
+          body: "Mise à jour générée par Gemini et auto-validée."
           branch: "bot/update-fenlight-signatures"
           base: main
           delete-branch: true
+
+      - name: Auto-merge Pull Request
+        # S'exécute si une PR a bien été créée OU mise à jour
+        if: steps.cpr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          # Commande CLI GitHub pour fusionner la PR automatiquement
+          gh pr merge --merge --auto "${{ steps.cpr.outputs.pull-request-number }}"
