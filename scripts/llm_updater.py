@@ -12,6 +12,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 APP_PY_PATH = "app.py"
 CHANGELOG_PATH = "ChangeLog.md"
 README_PATH = "README.md"
+STATE_FILE_PATH = "scripts/.last_fenlight_version" # Fichier pour mémoriser la version
 
 REPO_RAW_BASE = "https://raw.githubusercontent.com/FenlightAnonyMouse/FenlightAnonyMouse.github.io/main/packages"
 ADDON_ID = "plugin.video.fenlight"
@@ -30,7 +31,19 @@ def main():
         raise Exception(f"Impossible de lire le fichier de version (Code {r_version.status_code}).")
     
     fenlight_version = r_version.text.strip()
-    print(f"Dernière version trouvée : {fenlight_version}")
+    print(f"Dernière version distante trouvée : {fenlight_version}")
+
+    # --- VÉRIFICATION DE L'ÉTAT ---
+    if os.path.exists(STATE_FILE_PATH):
+        with open(STATE_FILE_PATH, "r", encoding="utf-8") as f:
+            last_processed_version = f.read().strip()
+        
+        if last_processed_version == fenlight_version:
+            print(f"✅ La version {fenlight_version} de Fen Light a déjà été traitée.")
+            print("Aucun patch nécessaire. Fin du script.")
+            return  # On arrête tout ici, économisant l'API et évitant une PR inutile.
+    else:
+        print("Aucun historique de version trouvé. Traitement initial en cours...")
 
     zip_url = f"{REPO_RAW_BASE}/{ADDON_ID}-{fenlight_version}.zip"
     print(f"Téléchargement de l'archive : {zip_url}")
@@ -86,15 +99,13 @@ def main():
     print("Mise à jour des numéros de version...")
     today_str = datetime.date.today().strftime("%Y-%m-%d")
     
-    # Extraire l'ancienne version
     version_match = re.search(r'APP_VERSION\s*=\s*"(\d+)\.(\d+)\.(\d+)"', app_py_content)
     if version_match:
         major, minor, patch = version_match.groups()
-        new_version = f"{major}.{minor}.{int(patch) + 1}" # +0.0.1
+        new_version = f"{major}.{minor}.{int(patch) + 1}"
     else:
         new_version = "1.0.0"
 
-    # Remplacer dans app.py
     new_app_py = re.sub(r'APP_VERSION\s*=\s*"\d+\.\d+\.\d+"', f'APP_VERSION = "{new_version}"', new_app_py)
     new_app_py = re.sub(r'APP_DATE\s*=\s*"\d{4}-\d{2}-\d{2}"', f'APP_DATE = "{today_str}"', new_app_py)
 
@@ -116,14 +127,16 @@ def main():
     if os.path.exists(README_PATH):
         with open(README_PATH, "r", encoding="utf-8") as f:
             readme_content = f.read()
-        
-        # Met à jour le badge version dans le readme
         readme_content = re.sub(r'badge/version-\d+\.\d+\.\d+-', f'badge/version-{new_version}-', readme_content)
-        
         with open(README_PATH, "w", encoding="utf-8") as f:
             f.write(readme_content)
 
-    print(f"Opération terminée avec succès. Nouvelle version : {new_version}")
+    # --- SAUVEGARDE DE L'ÉTAT ---
+    print(f"Sauvegarde de l'état (dernière version traitée : {fenlight_version})...")
+    with open(STATE_FILE_PATH, "w", encoding="utf-8") as f:
+        f.write(fenlight_version)
+
+    print(f"Opération terminée avec succès. Nouvelle version locale : {new_version}")
 
 if __name__ == "__main__":
     main()
