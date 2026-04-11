@@ -1,6 +1,6 @@
 # 🎬 My Cinema - An Amazon Skill for Kodi
 
-![Version](https://img.shields.io/badge/Version-1.7.5-blue)
+![Version](https://img.shields.io/badge/Version-1.8.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.9-blue?logo=python&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)
 ![Platform](https://img.shields.io/badge/Platform-Nvidia%20Shield-76B900?logo=nvidia&logoColor=white)
@@ -82,8 +82,9 @@ services:
       - KODI_USER=kodi
       - KODI_PASS=kodi
       
-      # --- API KEYS ---
+      # --- API KEYS & SÉCURITÉ ---
       - TMDB_API_KEY=your_tmdb_api_key
+      - ALEXA_SKILL_ID=amzn1.ask.skill.xxxx-xxxx-xxxx-xxxx # Optionnel mais recommandé
       
       # --- TRAKT.TV ---
       - TRAKT_CLIENT_ID=your_trakt_client_id
@@ -96,6 +97,7 @@ services:
       # --- DEBUG (Optional) ---
       - DEBUG_MODE=false # Set to true for verbose logs (Alexa JSON, etc.)
 ```
+
 ### 3. Alexa Skill Setup
 1.  Go to the [Alexa Developer Console](https://developer.amazon.com/alexa/console/ask) and create a **Custom Skill**.
 2.  **Invocation Name:** Choose something simple like "my cinema" (EN) or "mon cinéma" (FR).
