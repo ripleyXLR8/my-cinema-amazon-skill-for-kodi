@@ -1,5 +1,6 @@
 # 🎬 My Cinema - An Amazon Skill for Kodi
 
+![Version](https://img.shields.io/badge/Version-1.7.5-blue)
 ![Python](https://img.shields.io/badge/Python-3.9-blue?logo=python&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)
 ![Platform](https://img.shields.io/badge/Platform-Nvidia%20Shield-76B900?logo=nvidia&logoColor=white)
@@ -10,6 +11,7 @@
 ![Repo Size](https://img.shields.io/github/repo-size/ripleyxlr8/kodi-fenlight-alexa-skill?style=flat)
 ![Vibe Coding](https://img.shields.io/badge/Built%20with-Google%20Gemini-8E75B2)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-orange?logo=buymeacoffee&logoColor=white)](https://buymeacoffee.com/ripleyxlr8)
+
 
 **A dockerized Amazon Skill to start movies or series with voice control using your favorite Kodi video player add-on (like Fenlight) using TMBDHelper as an abstraction layer.**
 
