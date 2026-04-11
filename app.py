@@ -1,15 +1,13 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 1.7.5
+# VERSION : 1.8.0
 # DATE    : 2026-04-11 (CET)
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
 # DESCRIPTION : 
 # Skill Alexa pour contrôle vocal de Kodi sur Nvidia Shield.
-# UPDATE v1.7.5 : Ajout d'une route /health pour l'intégration du Healthcheck sous Docker/Unraid.
-# UPDATE v1.7.4 : Ajout de la gestion du signal SIGTERM pour un arrêt immédiat sous Docker.
-# UPDATE v1.7.3 : Ajout de la commande vocale pour déclencher manuellement 
-# le patcher (TriggerPatcherIntent) via un thread dédié.
+# UPDATE v1.8.0 : Ajout de la validation de sécurité ALEXA_SKILL_ID.
+# UPDATE v1.7.5 : Ajout d'une route /health pour l'intégration du Healthcheck.
 # ==============================================================================
 
 from flask import Flask, request, jsonify
@@ -33,7 +31,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "1.7.6"
+APP_VERSION = "1.8.0"
 APP_DATE = "2026-04-11"
 APP_AUTHOR = "Richard Perez"
 
@@ -53,12 +51,13 @@ if DEBUG_MODE:
 DATA_DIR = "/app/data"
 TOKEN_FILE = os.path.join(DATA_DIR, "trakt_tokens.json")
 
-# --- API KEYS (ENV) ---
+# --- API KEYS & SECURITE (ENV) ---
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 TRAKT_CLIENT_ID = os.getenv("TRAKT_CLIENT_ID")
 TRAKT_CLIENT_SECRET = os.getenv("TRAKT_CLIENT_SECRET")
 ENV_TRAKT_ACCESS_TOKEN = os.getenv("TRAKT_ACCESS_TOKEN")
 ENV_TRAKT_REFRESH_TOKEN = os.getenv("TRAKT_REFRESH_TOKEN")
+ALEXA_SKILL_ID = os.getenv("ALEXA_SKILL_ID") # Ajout pour sécuriser le webhook
 
 # Réseau & Kodi
 SHIELD_IP = os.getenv("SHIELD_IP")
@@ -196,16 +195,9 @@ def check_and_patch_fenlight():
     try:
         with open(FENLIGHT_LOCAL_TEMP, 'r', encoding='utf-8') as f: content = f.read()
         
-        # Signatures
-        # 1. Patch pour player_check afin de toujours permettre la lecture.
-        # Original: if mode == 'playback.%s' % playback_key():
-        # Remplacement: if True: # mode == 'playback.%s' % playback_key():
         TARGET_1_ORIG = "if mode == 'playback.%s' % playback_key():"
         TARGET_1_PATCH = "if True: # mode == 'playback.%s' % playback_key():"
         
-        # 2. Patch pour external_playback_check afin de ne jamais déclencher la détection externe.
-        # Original: if not playback_key() in params:
-        # Remplacement: if False: # not playback_key() in params:
         TARGET_2_ORIG = "if not playback_key() in params:"
         TARGET_2_PATCH = "if False: # not playback_key() in params:"
         
@@ -313,9 +305,7 @@ def verify_api_status():
 # 6. HELPERS (KODI CONTROL & TMDB)
 # ==========================================
 
-# --- KODI INTROSPECTION ---
 def get_kodi_active_player():
-    """Récupère l'ID du lecteur actif (1=Vidéo)."""
     payload = {"jsonrpc": "2.0", "method": "Player.GetActivePlayers", "id": 1}
     try:
         auth = (KODI_USER, KODI_PASS) if KODI_USER and KODI_PASS else None
@@ -328,7 +318,6 @@ def get_kodi_active_player():
     return None
 
 def get_kodi_player_item(player_id):
-    """Récupère les infos du média en cours."""
     payload = {
         "jsonrpc": "2.0", 
         "method": "Player.GetItem", 
@@ -346,7 +335,6 @@ def get_kodi_player_item(player_id):
     return None
 
 def stop_kodi_playback(player_id):
-    """Arrête la lecture en cours."""
     payload = {"jsonrpc": "2.0", "method": "Player.Stop", "params": {"playerid": player_id}, "id": 1}
     try:
         auth = (KODI_USER, KODI_PASS) if KODI_USER and KODI_PASS else None
@@ -354,7 +342,6 @@ def stop_kodi_playback(player_id):
         logger.info("[KODI] Lecture arrêtée.")
     except: pass
 
-# --- TRAKT & TMDB ---
 def get_trakt_next_episode(tmdb_show_id):
     current_token = load_trakt_token()
     if not TRAKT_CLIENT_ID or not current_token: return None, None
@@ -450,9 +437,8 @@ def worker_process(plugin_url):
     logger.info(">>> FIN PROCESSUS LECTURE")
 
 def change_source_worker(player_id, next_url):
-    """Gère l'enchaînement Arrêt -> Pause -> Relance en arrière-plan."""
     stop_kodi_playback(player_id)
-    time.sleep(2) # Laisser le temps à Kodi de revenir au menu
+    time.sleep(2)
     worker_process(next_url)
 
 # ==========================================
@@ -461,13 +447,28 @@ def change_source_worker(player_id, next_url):
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Endpoint utilisé par Docker/Unraid pour vérifier que le conteneur est en vie."""
     return jsonify({"status": "healthy", "version": APP_VERSION}), 200
 
 @app.route('/alexa-webhook', methods=['POST'])
 def alexa_handler():
     req_data = request.get_json()
     if not req_data or 'request' not in req_data: return jsonify({"error": "Invalid Request"}), 400
+
+    # --- SÉCURITÉ : Validation de l'ID de la Skill Alexa ---
+    if ALEXA_SKILL_ID:
+        try:
+            # Recherche de l'ID dans la structure JSON d'Amazon
+            session_app_id = req_data.get('session', {}).get('application', {}).get('applicationId')
+            context_app_id = req_data.get('context', {}).get('System', {}).get('application', {}).get('applicationId')
+            
+            incoming_app_id = session_app_id or context_app_id
+            
+            if incoming_app_id != ALEXA_SKILL_ID:
+                logger.warning(f"[SÉCURITÉ] ALERTE: Requête rejetée. Skill ID non reconnu ({incoming_app_id})")
+                return jsonify({"error": "Forbidden"}), 403
+        except Exception as e:
+            logger.error(f"[SÉCURITÉ] Erreur lors de l'extraction de l'ID Alexa : {e}")
+            return jsonify({"error": "Forbidden"}), 403
 
     req_type = req_data['request']['type']
     session = req_data.get('session', {})
@@ -489,12 +490,10 @@ def alexa_handler():
         force_select = True if slot_source_mode else attributes.get('force_select', False)
         manual_msg = get_text("manual_select", lang) if force_select else ""
 
-        # --- NOUVEL INTENT (v1.7.3) : PATCHER MANUEL ---
         if intent_name == "TriggerPatcherIntent":
             threading.Thread(target=check_and_patch_fenlight).start()
             return jsonify(build_response(get_text("patcher_triggered", lang)))
 
-        # --- CHANGE SOURCE (v1.7.0) ---
         elif intent_name == "ChangeSourceIntent":
             if not is_kodi_responsive():
                 return jsonify(build_response(get_text("kodi_offline", lang), end_session=True))
@@ -505,8 +504,7 @@ def alexa_handler():
             if not item:
                 return jsonify(build_response(get_text("nothing_playing", lang), end_session=True))
             
-            # Extraction infos
-            media_type = item.get('type') # 'movie' ou 'episode'
+            media_type = item.get('type')
             title = item.get('title')
             year = item.get('year')
             
@@ -529,13 +527,11 @@ def alexa_handler():
                     response_msg = get_text("change_source_episode", lang, r_show_name, season, episode)
 
             if new_url:
-                # Lancement threadé pour libérer Alexa immédiatement
                 threading.Thread(target=change_source_worker, args=(player_id, new_url)).start()
                 return jsonify(build_response(response_msg))
             else:
                 return jsonify(build_response(get_text("content_error", lang)))
 
-        # --- INTENTS EXISTANTS ---
         elif intent_name == "ResumeTVShowIntent":
             query = slots.get('ShowName', {}).get('value')
             if not query: return jsonify(build_response(get_text("ask_show", lang), end_session=False))
@@ -638,10 +634,11 @@ def print_startup_banner():
     masked_key = f"{TMDB_API_KEY[:4]}...{TMDB_API_KEY[-4:]}" if TMDB_API_KEY else "MISSING"
     current_token = load_trakt_token()
     masked_trakt = "Loaded (from file/env)" if current_token else "MISSING"
+    skill_sec = "ACTIVE" if ALEXA_SKILL_ID else "DISABLED (WARNING)"
 
     print("\n" + "="*50)
     print(f" KODI ALEXA CONTROLLER")
-    print(f" Version : {APP_VERSION} (Feature: SIGTERM Handling)")
+    print(f" Version : {APP_VERSION}")
     print(f" Date    : {APP_DATE}")
     print(f" Author  : {APP_AUTHOR}")
     print(f" Debug   : {'ON' if DEBUG_MODE else 'OFF'}")
@@ -649,9 +646,9 @@ def print_startup_banner():
     print(f" [NET] Shield IP      : {SHIELD_IP if SHIELD_IP else 'MISSING'}")
     print(f" [NET] Kodi Endpoint  : {KODI_BASE_URL if KODI_BASE_URL else 'INVALID'}")
     print(f" [CFG] Player Auto    : {PLAYER_DEFAULT if PLAYER_DEFAULT else 'MISSING'}")
-    print(f" [CFG] Player Select  : {PLAYER_SELECT if PLAYER_SELECT else 'MISSING'}")
     print(f" [API] TMDB Key       : {masked_key}")
     print(f" [API] Trakt Token    : {masked_trakt}")
+    print(f" [SEC] Skill ID Check : {skill_sec}")
     print(f" [SYS] Auto-Patcher   : ACTIVE (Interval: {PATCH_CHECK_INTERVAL}s)")
     print("="*50 + "\n")
     sys.stdout.flush()
