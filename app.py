@@ -33,7 +33,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "1.7.5"
+APP_VERSION = "1.7.6"
 APP_DATE = "2026-04-11"
 APP_AUTHOR = "Richard Perez"
 
@@ -197,8 +197,15 @@ def check_and_patch_fenlight():
         with open(FENLIGHT_LOCAL_TEMP, 'r', encoding='utf-8') as f: content = f.read()
         
         # Signatures
+        # 1. Patch pour player_check afin de toujours permettre la lecture.
+        # Original: if mode == 'playback.%s' % playback_key():
+        # Remplacement: if True: # mode == 'playback.%s' % playback_key():
         TARGET_1_ORIG = "if mode == 'playback.%s' % playback_key():"
         TARGET_1_PATCH = "if True: # mode == 'playback.%s' % playback_key():"
+        
+        # 2. Patch pour external_playback_check afin de ne jamais déclencher la détection externe.
+        # Original: if not playback_key() in params:
+        # Remplacement: if False: # not playback_key() in params:
         TARGET_2_ORIG = "if not playback_key() in params:"
         TARGET_2_PATCH = "if False: # not playback_key() in params:"
         
@@ -212,10 +219,10 @@ def check_and_patch_fenlight():
             return
 
         if not has_orig_1 and not has_patch_1:
-             logger.warning("[PATCHER] ALERTE : Code 'player_check' introuvable !")
+             logger.warning("[PATCHER] ALERTE : Code 'player_check' introuvable dans le fichier local !")
              return
         if not has_orig_2 and not has_patch_2:
-             logger.warning("[PATCHER] ALERTE : Code 'external_playback_check' introuvable !")
+             logger.warning("[PATCHER] ALERTE : Code 'external_playback_check' introuvable dans le fichier local !")
              return
 
         new_content = content
@@ -232,9 +239,9 @@ def check_and_patch_fenlight():
             with open(FENLIGHT_LOCAL_TEMP, 'w', encoding='utf-8') as f: f.write(new_content)
             push_res = subprocess.run(["adb", "push", FENLIGHT_LOCAL_TEMP, FENLIGHT_UTILS_REMOTE_PATH], capture_output=True)
             if push_res.returncode == 0: logger.info("[PATCHER] SUCCÈS : Patchs appliqués sur kodi_utils.py.")
-            else: logger.error("[PATCHER] ÉCHEC : Impossible d'écrire sur la Shield.")
+            else: logger.error("[PATCHER] ÉCHEC : Impossible d'écrire sur la Shield via ADB.")
             
-    except Exception as e: logger.error(f"[PATCHER] Erreur: {e}")
+    except Exception as e: logger.error(f"[PATCHER] Erreur lors du patching: {e}")
 
 def patcher_scheduler():
     while True:
