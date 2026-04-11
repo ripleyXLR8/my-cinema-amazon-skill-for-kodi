@@ -1,0 +1,50 @@
+name: Auto Create Release on Merge
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  auto-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # Nécessaire pour lire l'historique des tags
+
+      - name: Extract version from app.py
+        id: version_check
+        run: |
+          # Lit le numéro de version dans app.py
+          VERSION=$(grep -Po 'APP_VERSION = "\K[^"]*' app.py)
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          
+          # Vérifie si un tag avec ce nom existe déjà (pour ne pas recréer la même release)
+          if git ls-remote --tags origin refs/tags/v$VERSION | grep -q "refs/tags/v$VERSION"; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "La release v$VERSION existe déjà. Annulation."
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Nouvelle version détectée : v$VERSION. Création de la release en cours..."
+          fi
+
+      - name: Create GitHub Release
+        if: steps.version_check.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }} # ⚠️ CRUCIAL : Déclenche le workflow Docker
+        with:
+          tag_name: v${{ steps.version_check.outputs.VERSION }}
+          name: Version ${{ steps.version_check.outputs.VERSION }}
+          body: |
+            Nouvelle version **${{ steps.version_check.outputs.VERSION }}** publiée automatiquement.
+            
+            Consultez le fichier `ChangeLog.md` pour le détail des modifications.
+          draft: false
+          prerelease: false
