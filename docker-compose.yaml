@@ -19,8 +19,9 @@ services:
       - KODI_USER=kodi
       - KODI_PASS=kodi
       
-      # --- API KEYS ---
+      # --- API KEYS & SÉCURITÉ ---
       - TMDB_API_KEY=your_tmdb_api_key
+      - ALEXA_SKILL_ID=amzn1.ask.skill.xxxx-xxxx-xxxx-xxxx # Recommandé pour sécuriser le webhook
       
       # --- TRAKT.TV ---
       - TRAKT_CLIENT_ID=your_trakt_client_id
