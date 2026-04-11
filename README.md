@@ -12,8 +12,6 @@
 ![Vibe Coding](https://img.shields.io/badge/Built%20with-Google%20Gemini-8E75B2)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-orange?logo=buymeacoffee&logoColor=white)](https://buymeacoffee.com/ripleyxlr8)
 
-Test
-
 **A dockerized Amazon Skill to start movies or series with voice control using your favorite Kodi video player add-on (like Fenlight) using TMBDHelper as an abstraction layer.**
 
 This project features intelligent power management (ADB/WoL), TMDB series and movie lookup, Trakt.tv resume sync, and automated Fen Light add-on patching to allow use by external players (TMDB Helper).
