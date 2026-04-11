@@ -60,7 +60,7 @@ def main():
 
     MD_TICKS = "`" * 3
 
-    # NOUVEAU PROMPT : Orienté sur l'objectif ("Intent-based")
+    # PROMPT : Orienté sur l'objectif ("Intent-based")
     prompt = f"""
     Tu es un développeur expert en Python.
     Voici le nouveau fichier `kodi_utils.py` d'un addon Kodi (Fen Light) (v{fenlight_version}):
