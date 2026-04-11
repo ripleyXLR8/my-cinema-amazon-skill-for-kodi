@@ -80,7 +80,7 @@ def main():
 
     # 6. Interroger Gemini
     print("Analyse par le LLM Gemini en cours...")
-    model = genai.GenerativeModel('gemini-2.5-pro') 
+    model = genai.GenerativeModel('gemini-2.5-flash') 
     result = model.generate_content(prompt)
     
     new_app_py = result.text.strip()
