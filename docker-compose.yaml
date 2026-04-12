@@ -22,9 +22,16 @@ services:
       - TZ=Europe/Paris
       - PYTHONUNBUFFERED=1
       
-      # --- SHIELD CONFIG ---
-      - SHIELD_IP=192.168.1.x
-      - SHIELD_MAC=AA:BB:CC:DD:EE:FF
+      # --- SYSTEM CONFIG (NOUVEAU) ---
+      - TARGET_OS=libreelec # Désactive ADB/WoL et active SSH pour le patcher
+      
+      # --- SSH CONFIG (LibreELEC) ---
+      - SSH_USER=root
+      - SSH_PASS=libreelec
+      
+      # --- CIBLE (RASPBERRY PI / LIBREELEC) ---
+      - SHIELD_IP=192.168.1.x # Renseigne ici l'IP de ton Raspberry Pi
+      - SHIELD_MAC=AA:BB:CC:DD:EE:FF # Ignoré en mode LibreELEC, mais laissé pour la structure
       
       # --- KODI CONFIG ---
       - KODI_PORT=8080
