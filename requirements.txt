@@ -1,3 +1,4 @@
 flask
 requests
 wakeonlan
+paramiko==3.4.0
