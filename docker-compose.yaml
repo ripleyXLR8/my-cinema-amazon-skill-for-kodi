@@ -2,10 +2,22 @@ version: '3.8'
 
 services:
   kodi-alexa-skill:
-    build: .
+    # Pour utiliser l'image précompilée (comme dans ton XML) :
+    image: ghcr.io/ripleyxlr8/my-cinema-amazon-skill-for-kodi:latest
     container_name: kodi-fenlight-alexa-skill
     restart: unless-stopped
-    network_mode: host  # Required for WoL to work
+    
+    # --- CONFIGURATION RÉSEAU (BRIDGE) ---
+    # On expose explicitement le port 5000
+    ports:
+      - "5000:5000"
+
+    volumes:
+      # Persistance des tokens Trakt
+      - ./data:/app/data
+      # Persistance des clés d'autorisation ADB
+      - ./adb_keys:/root/.android
+      
     environment:
       - TZ=Europe/Paris
       - PYTHONUNBUFFERED=1
@@ -21,13 +33,14 @@ services:
       
       # --- API KEYS & SÉCURITÉ ---
       - TMDB_API_KEY=your_tmdb_api_key
-      - ALEXA_SKILL_ID=amzn1.ask.skill.xxxx-xxxx-xxxx-xxxx # Recommandé pour sécuriser le webhook
+      - ALEXA_SKILL_ID=amzn1.ask.skill.xxxx-xxxx-xxxx-xxxx
       
       # --- TRAKT.TV ---
       - TRAKT_CLIENT_ID=your_trakt_client_id
       - TRAKT_ACCESS_TOKEN=your_trakt_access_token
-
-      # --- TMDB HELPER PLAYERS (Must match filenames on Shield including .json) ---
+      - TRAKT_REFRESH_TOKEN=your_trakt_refresh_token
+      
+      # --- TMDB HELPER PLAYERS ---
       - PLAYER_DEFAULT=fenlight_auto.json
       - PLAYER_SELECT=fenlight_select.json
       
