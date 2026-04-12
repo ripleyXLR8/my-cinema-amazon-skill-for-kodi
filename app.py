@@ -11,7 +11,7 @@
 # UPDATE v1.8.0 : Ajout de la validation de sécurité ALEXA_SKILL_ID.
 # ==============================================================================
 
-from flask import Flask, request, jsonify, render_template_string, redirect, url_for, flash
+from flask import Flask, request, jsonify, render_template, redirect, url_for, flash
 import requests
 import threading
 import time
@@ -33,7 +33,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.0.1"
+APP_VERSION = "2.0.2"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
@@ -44,17 +44,14 @@ app.secret_key = os.urandom(24) # Nécessaire pour sécuriser les sessions et me
 # 1. CONFIGURATION & VARIABLES
 # ==========================================
 
-# Mode Debug
 DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
 if DEBUG_MODE:
     logger.setLevel(logging.DEBUG)
-    logger.debug("MODE DEBUG ACTIVÉ : Logs verbeux.")
 
-# --- FICHIER DE PERSISTANCE DES TOKENS ---
 DATA_DIR = "/app/data"
 TOKEN_FILE = os.path.join(DATA_DIR, "trakt_tokens.json")
 
-# --- API KEYS & SECURITE (ENV) ---
+# API KEYS & SECURITE (ENV)
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
 ENV_TRAKT_CLIENT_ID = os.getenv("TRAKT_CLIENT_ID")
 ENV_TRAKT_CLIENT_SECRET = os.getenv("TRAKT_CLIENT_SECRET")
@@ -62,7 +59,7 @@ ENV_TRAKT_ACCESS_TOKEN = os.getenv("TRAKT_ACCESS_TOKEN")
 ENV_TRAKT_REFRESH_TOKEN = os.getenv("TRAKT_REFRESH_TOKEN")
 ALEXA_SKILL_ID = os.getenv("ALEXA_SKILL_ID") 
 
-# --- SYSTEM & OS CONFIG ---
+# SYSTEM & OS CONFIG
 TARGET_OS = os.getenv("TARGET_OS", "android").lower()
 SSH_USER = os.getenv("SSH_USER", "root")
 SSH_PASS = os.getenv("SSH_PASS", "libreelec")
@@ -115,7 +112,6 @@ def save_trakt_token_data(access_token, refresh_token, client_id=None, client_se
         return False
 
 def load_trakt_config():
-    """Charge la configuration depuis l'environnement, surchargée par le fichier local s'il existe."""
     config = {
         "access_token": ENV_TRAKT_ACCESS_TOKEN,
         "refresh_token": ENV_TRAKT_REFRESH_TOKEN,
@@ -169,135 +165,7 @@ def refresh_trakt_token_online():
     return None
 
 # ==========================================
-# 3. WEB UI (TEMPLATES HTML)
-# ==========================================
-
-BASE_HTML = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Cinema - Control Panel</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { background-color: #0f172a; color: #f8fafc; }
-        .card { background-color: #1e293b; border: 1px solid #334155; }
-    </style>
-</head>
-<body class="min-h-screen flex flex-col">
-    <nav class="p-6 border-b border-slate-800">
-        <div class="container mx-auto flex justify-between items-center">
-            <h1 class="text-2xl font-bold tracking-tight text-blue-500">🎬 MY CINEMA <span class="text-slate-500 text-sm font-normal">v{{ version }}</span></h1>
-            <div class="space-x-6">
-                <a href="/" class="hover:text-blue-400 transition">Dashboard</a>
-                <a href="/setup" class="hover:text-blue-400 transition">Trakt Setup</a>
-            </div>
-        </div>
-    </nav>
-    <main class="container mx-auto p-8 flex-grow">
-        {% with messages = get_flashed_messages() %}
-          {% if messages %}
-            {% for message in messages %}
-              <div class="mb-6 p-4 rounded {% if 'Erreur' in message or 'Error' in message %}bg-red-900/50 border border-red-500 text-red-200{% else %}bg-green-900/50 border border-green-500 text-green-200{% endif %}">
-                {{ message }}
-              </div>
-            {% endfor %}
-          {% endif %}
-        {% endwith %}
-        {% block content %}{% endblock %}
-    </main>
-    <footer class="p-8 border-t border-slate-800 text-center text-slate-500 text-sm">
-        My Cinema &copy; 2026 - Vibe Coding Experiment
-    </footer>
-</body>
-</html>
-"""
-
-DASHBOARD_HTML = """
-{% extends "base" %}
-{% block content %}
-<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-    <div class="card p-6 rounded-xl">
-        <h2 class="text-slate-400 text-sm uppercase font-semibold mb-2">Kodi Status</h2>
-        <div class="flex items-center space-x-3">
-            <div class="h-3 w-3 rounded-full {% if kodi_ok %}bg-green-500{% else %}bg-red-500{% endif %}"></div>
-            <span class="text-xl font-medium">{{ shield_ip }}</span>
-        </div>
-        <p class="text-slate-500 text-xs mt-4">Target OS: {{ target_os.upper() }}</p>
-    </div>
-
-    <div class="card p-6 rounded-xl">
-        <h2 class="text-slate-400 text-sm uppercase font-semibold mb-2">TMDB API</h2>
-        <div class="flex items-center space-x-3">
-            <div class="h-3 w-3 rounded-full {% if tmdb_ok %}bg-green-500{% else %}bg-red-500{% endif %}"></div>
-            <span class="text-xl font-medium">TheMovieDB</span>
-        </div>
-        <p class="text-slate-500 text-xs mt-4">Key: {{ tmdb_key_masked }}</p>
-    </div>
-
-    <div class="card p-6 rounded-xl">
-        <h2 class="text-slate-400 text-sm uppercase font-semibold mb-2">Trakt.tv Auth</h2>
-        <div class="flex items-center space-x-3">
-            <div class="h-3 w-3 rounded-full {% if trakt_ok %}bg-green-500{% else %}bg-red-500{% endif %}"></div>
-            <span class="text-xl font-medium">Account Sync</span>
-        </div>
-        <p class="text-slate-500 text-xs mt-4">Token status: {% if trakt_ok %}Active{% else %}Missing/Expired{% endif %}</p>
-    </div>
-</div>
-
-<div class="mt-10 card p-8 rounded-xl">
-    <h3 class="text-xl font-bold mb-4">System Information</h3>
-    <table class="w-full text-left text-sm text-slate-400">
-        <tr class="border-b border-slate-700"><td class="py-2 font-semibold text-slate-300">Default Player</td><td>{{ p_def }}</td></tr>
-        <tr class="border-b border-slate-700"><td class="py-2 font-semibold text-slate-300">Select Player</td><td>{{ p_sel }}</td></tr>
-        <tr><td class="py-2 font-semibold text-slate-300">Alexa Security</td><td>{% if skill_id %}Enabled ✅{% else %}Disabled ⚠️{% endif %}</td></tr>
-    </table>
-</div>
-{% endblock %}
-"""
-
-SETUP_HTML = """
-{% extends "base" %}
-{% block content %}
-<div class="max-w-2xl mx-auto card p-8 rounded-xl">
-    <h2 class="text-2xl font-bold mb-2">Trakt Authentication</h2>
-    <p class="text-slate-400 mb-8 text-sm">Follow these steps to link your Trakt.tv account without command line tools.</p>
-
-    <form method="POST" class="space-y-6">
-        <div>
-            <label class="block text-sm font-medium text-slate-300 mb-2">1. Trakt Client ID</label>
-            <input type="text" name="client_id" value="{{ cfg.client_id or '' }}" required
-                class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none">
-        </div>
-
-        <div>
-            <label class="block text-sm font-medium text-slate-300 mb-2">2. Trakt Client Secret</label>
-            <input type="password" name="client_secret" value="{{ cfg.client_secret or '' }}" required
-                class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none">
-        </div>
-
-        <div class="pt-4 border-t border-slate-700">
-            <label class="block text-sm font-medium text-slate-300 mb-2">3. Trakt PIN Code</label>
-            <div class="flex space-x-4 mb-2">
-                <input type="text" name="pin_code" placeholder="Enter PIN here" required
-                    class="flex-grow bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none">
-                <button type="button" onclick="window.open('https://trakt.tv/oauth/authorize?response_type=code&client_id=' + document.getElementsByName('client_id')[0].value + '&redirect_uri=urn:ietf:wg:oauth:2.0:oob')"
-                    class="bg-slate-700 hover:bg-slate-600 px-4 rounded-lg transition text-sm whitespace-nowrap">Get PIN</button>
-            </div>
-            <p class="text-xs text-slate-500 italic">Note: Make sure your Redirect URI is set to 'urn:ietf:wg:oauth:2.0:oob' in Trakt.</p>
-        </div>
-
-        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-lg transition shadow-lg mt-4">
-            GENERATE TOKENS
-        </button>
-    </form>
-</div>
-{% endblock %}
-"""
-
-# ==========================================
-# 4. WEB ROUTES
+# 3. ROUTES FLASK (WEB & API)
 # ==========================================
 
 @app.route('/')
@@ -310,18 +178,17 @@ def dashboard():
     except: pass
     
     cfg = load_trakt_config()
-    trakt_ok = bool(cfg.get("access_token"))
     
-    return render_template_string(
-        DASHBOARD_HTML, 
-        base=BASE_HTML,
-        version=APP_VERSION,
-        kodi_ok=kodi_ok,
-        shield_ip=SHIELD_IP,
-        target_os=TARGET_OS,
-        tmdb_ok=tmdb_ok,
-        tmdb_key_masked=f"{TMDB_API_KEY[:4]}...{TMDB_API_KEY[-4:]}" if TMDB_API_KEY else "MISSING",
-        trakt_ok=trakt_ok,
+    # Utilisation de render_template pour appeler les fichiers dans le dossier templates/
+    return render_template(
+        'dashboard.html', 
+        version=APP_VERSION, 
+        kodi_ok=kodi_ok, 
+        shield_ip=SHIELD_IP, 
+        target_os=TARGET_OS, 
+        tmdb_ok=tmdb_ok, 
+        tmdb_key_masked=f"{TMDB_API_KEY[:4]}...{TMDB_API_KEY[-4:]}" if TMDB_API_KEY else "MISSING", 
+        trakt_ok=bool(cfg.get("access_token")),
         p_def=PLAYER_DEFAULT,
         p_sel=PLAYER_SELECT,
         skill_id=ALEXA_SKILL_ID
@@ -333,37 +200,27 @@ def trakt_setup():
         c_id = request.form.get('client_id')
         c_secret = request.form.get('client_secret')
         pin = request.form.get('pin_code')
-
         url = "https://api.trakt.tv/oauth/token"
-        payload = {
-            "code": pin,
-            "client_id": c_id,
-            "client_secret": c_secret,
-            "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
-            "grant_type": "authorization_code"
-        }
-        
+        payload = {"code": pin, "client_id": c_id, "client_secret": c_secret, "redirect_uri": "urn:ietf:wg:oauth:2.0:oob", "grant_type": "authorization_code"}
         try:
             r = requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=10)
             if r.status_code == 200:
                 data = r.json()
                 save_trakt_token_data(data['access_token'], data['refresh_token'], c_id, c_secret)
-                flash("Success! Trakt tokens generated and saved.")
+                flash("Success! Tokens generated.")
                 return redirect(url_for('dashboard'))
-            else:
-                flash(f"Error from Trakt: {r.text}")
-        except Exception as e:
-            flash(f"System Error: {str(e)}")
-
+            else: flash(f"Trakt Error: {r.text}")
+        except Exception as e: flash(f"Error: {str(e)}")
+        
     cfg = load_trakt_config()
-    return render_template_string(SETUP_HTML, base=BASE_HTML, version=APP_VERSION, cfg=cfg)
+    return render_template('setup.html', version=APP_VERSION, cfg=cfg)
 
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({"status": "healthy", "version": APP_VERSION}), 200
 
 # ==========================================
-# 5. TRADUCTIONS & PATCHER
+# 4. TRADUCTIONS & PATCHER
 # ==========================================
 TRANSLATIONS = {}
 
@@ -396,7 +253,6 @@ def check_and_patch_fenlight():
     ssh = None
     sftp = None
     
-    # 1. RÉCUPÉRATION DU FICHIER
     try:
         if TARGET_OS == "android":
             subprocess.run(["adb", "disconnect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -421,10 +277,8 @@ def check_and_patch_fenlight():
         if DEBUG_MODE: logger.error(f"[PATCHER] Erreur de connexion/lecture ({TARGET_OS}): {e}")
         return
 
-    # 2. LOGIQUE DE PATCH
     TARGET_1_ORIG = "if mode == 'playback.%s' % playback_key():"
     TARGET_1_PATCH = "if True: # mode == 'playback.%s' % playback_key():"
-    
     TARGET_2_ORIG = "if not playback_key() in params:"
     TARGET_2_PATCH = "if False: # not playback_key() in params:"
     
@@ -457,7 +311,6 @@ def check_and_patch_fenlight():
         new_content = new_content.replace(TARGET_2_ORIG, TARGET_2_PATCH)
         patched = True
     
-    # 3. ENVOI DU FICHIER PATCHÉ
     if patched:
         try:
             if TARGET_OS == "android":
@@ -486,7 +339,7 @@ def patcher_scheduler():
         time.sleep(PATCH_CHECK_INTERVAL)
 
 # ==========================================
-# 6. GESTION PUISSANCE
+# 5. GESTION PUISSANCE
 # ==========================================
 def is_kodi_responsive():
     if not KODI_BASE_URL: return False
@@ -524,7 +377,7 @@ def wake_and_start_kodi():
     return False
 
 # ==========================================
-# 7. API CHECKER
+# 6. API CHECKER
 # ==========================================
 def verify_api_status():
     logger.info("--- VÉRIFICATION DES ACCÈS API ---")
@@ -553,7 +406,7 @@ def verify_api_status():
     logger.info("-" * 30)
 
 # ==========================================
-# 8. HELPERS (KODI CONTROL & TMDB)
+# 7. HELPERS (KODI CONTROL & TMDB)
 # ==========================================
 
 def get_kodi_active_player():
@@ -695,7 +548,7 @@ def change_source_worker(player_id, next_url):
     worker_process(next_url)
 
 # ==========================================
-# 9. ALEXA WEBHOOK ROUTE
+# 8. ALEXA WEBHOOK ROUTE
 # ==========================================
 
 @app.route('/alexa-webhook', methods=['POST'])
@@ -868,7 +721,7 @@ def build_response(text, end_session=True, attributes={}):
     return {"version": "1.0", "sessionAttributes": attributes, "response": {"outputSpeech": {"type": "PlainText", "text": text}, "shouldEndSession": end_session}}
 
 # ==========================================
-# 10. GESTION DE L'ARRÊT DU CONTENEUR
+# 9. GESTION DE L'ARRÊT DU CONTENEUR
 # ==========================================
 def handle_sigterm(*args):
     logger.info("Signal SIGTERM reçu d'Unraid/Docker. Fermeture de My Cinema...")
