@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div class="card p-6 rounded-xl">
+        <h2 class="text-slate-400 text-sm uppercase font-semibold mb-2">Kodi Status</h2>
+        <div class="flex items-center space-x-3">
+            <div class="h-3 w-3 rounded-full {% if kodi_ok %}bg-green-500{% else %}bg-red-500{% endif %}"></div>
+            <span class="text-xl font-medium">{{ shield_ip }}</span>
+        </div>
+        <p class="text-slate-500 text-xs mt-4">Target OS: {{ target_os.upper() }}</p>
+    </div>
+    <div class="card p-6 rounded-xl">
+        <h2 class="text-slate-400 text-sm uppercase font-semibold mb-2">TMDB API</h2>
+        <div class="flex items-center space-x-3">
+            <div class="h-3 w-3 rounded-full {% if tmdb_ok %}bg-green-500{% else %}bg-red-500{% endif %}"></div>
+            <span class="text-xl font-medium">TheMovieDB</span>
+        </div>
+        <p class="text-slate-500 text-xs mt-4">Key: {{ tmdb_key_masked }}</p>
+    </div>
+    <div class="card p-6 rounded-xl">
+        <h2 class="text-slate-400 text-sm uppercase font-semibold mb-2">Trakt.tv Auth</h2>
+        <div class="flex items-center space-x-3">
+            <div class="h-3 w-3 rounded-full {% if trakt_ok %}bg-green-500{% else %}bg-red-500{% endif %}"></div>
+            <span class="text-xl font-medium">Account Sync</span>
+        </div>
+        <p class="text-slate-500 text-xs mt-4">Token: {% if trakt_ok %}Active{% else %}Missing{% endif %}</p>
+    </div>
+</div>
+{% endblock %}
