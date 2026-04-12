@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-2xl mx-auto card p-8 rounded-xl">
+    <h2 class="text-2xl font-bold mb-2">Trakt Authentication</h2>
+    <p class="text-slate-400 mb-8 text-sm">Follow these steps to generate your access tokens.</p>
+    <form method="POST" class="space-y-6">
+        <div>
+            <label class="block text-sm font-medium text-slate-300 mb-2">1. Client ID</label>
+            <input type="text" name="client_id" value="{{ cfg.client_id or '' }}" required
+                class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-slate-300 mb-2">2. Client Secret</label>
+            <input type="password" name="client_secret" value="{{ cfg.client_secret or '' }}" required
+                class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+        </div>
+        <div class="pt-4 border-t border-slate-700">
+            <label class="block text-sm font-medium text-slate-300 mb-2">3. PIN Code</label>
+            <div class="flex space-x-4 mb-2">
+                <input type="text" name="pin_code" placeholder="Paste PIN here" required
+                    class="flex-grow bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                <button type="button" onclick="window.open('https://trakt.tv/oauth/authorize?response_type=code&client_id=' + document.getElementsByName('client_id')[0].value + '&redirect_uri=urn:ietf:wg:oauth:2.0:oob')"
+                    class="bg-slate-700 hover:bg-slate-600 px-4 rounded-lg transition text-sm">Get PIN</button>
+            </div>
+        </div>
+        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-lg transition">GENERATE TOKENS</button>
+    </form>
+</div>
+{% endblock %}
