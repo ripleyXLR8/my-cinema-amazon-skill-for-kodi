@@ -2,18 +2,20 @@ version: '3.8'
 
 services:
   kodi-alexa-skill:
+    # Pour utiliser l'image précompilée (comme dans ton XML) :
     image: ghcr.io/ripleyxlr8/my-cinema-amazon-skill-for-kodi:latest
     container_name: kodi-fenlight-alexa-skill
     restart: unless-stopped
     
     # --- CONFIGURATION RÉSEAU (BRIDGE) ---
+    # On expose explicitement le port 5000
     ports:
       - "5000:5000"
 
     volumes:
       # Persistance des tokens Trakt
       - ./data:/app/data
-      # Persistance des clés d'autorisation ADB (conservé pour compatibilité avec ton XML Unraid)
+      # Persistance des clés d'autorisation ADB
       - ./adb_keys:/root/.android
       
     environment:
