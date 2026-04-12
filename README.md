@@ -20,7 +20,7 @@ This project features intelligent power management, TMDB series and movie lookup
 
 See the skill in action (French language demo) :
 
-[https://github.com/user-attachments/assets/da996a8d-55bf-4b13-b84a-542da01ceb5d](https://github.com/user-attachments/assets/da996a8d-55bf-4b13-b84a-542da01ceb5d)
+https://github.com/user-attachments/assets/da996a8d-55bf-4b13-b84a-542da01ceb5d
 
 ## ✨ Key Features
 
@@ -124,6 +124,30 @@ services:
       - DEBUG_MODE=false
 ```
 
+### Environment Variables
+
+Here is a summary of all available environment variables you can configure in your `docker-compose.yaml` file:
+
+| Variable | Description | Required | Default / Example |
+| :--- | :--- | :---: | :--- |
+| `TARGET_OS` | Target operating system (`android` or `libreelec`). | Yes | `android` |
+| `SHIELD_IP` | IP address of your Nvidia Shield or Raspberry Pi. | Yes | `192.168.1.x` |
+| `SHIELD_MAC` | MAC address for Wake-on-LAN (Android only). | No | `AA:BB:CC:DD:EE:FF` |
+| `SSH_USER` | SSH username (LibreELEC only). | No | `root` |
+| `SSH_PASS` | SSH password (LibreELEC only). | No | `libreelec` |
+| `KODI_PORT` | Kodi Web Server API Port. | Yes | `8080` |
+| `KODI_USER` | Kodi Web Server Username. | No | `kodi` |
+| `KODI_PASS` | Kodi Web Server Password. | No | `kodi` |
+| `TMDB_API_KEY` | Your TMDB (TheMovieDB) API Key. | Yes | - |
+| `ALEXA_SKILL_ID` | Your Custom Alexa Skill ID (Secures the webhook). | Yes | `amzn1.ask.skill...` |
+| `TRAKT_CLIENT_ID` | Trakt.tv API Client ID. | Yes | - |
+| `TRAKT_ACCESS_TOKEN` | Trakt.tv OAuth Access Token. | Yes | - |
+| `TRAKT_REFRESH_TOKEN`| Trakt.tv OAuth Refresh Token. | Yes | - |
+| `PLAYER_DEFAULT` | Default TMDB Helper player filename. | No | `fenlight_auto.json` |
+| `PLAYER_SELECT` | Manual source TMDB Helper player filename. | No | `fenlight_select.json` |
+| `DEBUG_MODE` | Enable verbose/debug logs (`true` or `false`). | No | `false` |
+| `TZ` | Container Timezone. | No | `Europe/Paris` |
+
 ### 3. Alexa Skill Setup
 1.  Go to the [Alexa Developer Console](https://developer.amazon.com/alexa/console/ask) and create a **Custom Skill**.
 2.  **Invocation Name:** Choose something simple like "my cinema" (EN) or "mon cinéma" (FR).
@@ -154,7 +178,7 @@ Since this app runs locally, you must manually generate the initial tokens once.
 Open a terminal (Linux/macOS) or PowerShell/Command Prompt (Windows) and run this `curl` command. Make sure to replace the placeholder values with your actual PIN, Client ID, and Client Secret:
 
 ```bash
-curl -X POST https://api.trakt.tv/oauth/token \
+curl -X POST [https://api.trakt.tv/oauth/token](https://api.trakt.tv/oauth/token) \
 -H "Content-Type: application/json" \
 -d '{
   "code": "YOUR_PIN_CODE",
