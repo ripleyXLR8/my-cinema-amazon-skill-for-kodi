@@ -1,6 +1,6 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.0.0
+# VERSION : 2.0.3
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
@@ -33,7 +33,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.0.2"
+APP_VERSION = "2.0.3"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
@@ -175,7 +175,8 @@ def dashboard():
     try:
         r = requests.get(f"https://api.themoviedb.org/3/movie/19995?api_key={TMDB_API_KEY}", timeout=3)
         tmdb_ok = (r.status_code == 200)
-    except: pass
+    except Exception as e: 
+        logger.warning(f"[DASHBOARD] Vérification TMDB échouée: {e}")
     
     cfg = load_trakt_config()
     
@@ -346,7 +347,8 @@ def is_kodi_responsive():
     try:
         r = requests.get(KODI_BASE_URL, timeout=2)
         if r.status_code in [200, 401, 405]: return True
-    except: pass
+    except Exception as e: 
+        if DEBUG_MODE: logger.debug(f"[KODI] Non responsive: {e}")
     return False
 
 def wake_and_start_kodi():
@@ -359,16 +361,16 @@ def wake_and_start_kodi():
 
     logger.info(f"[POWER] Réveil de l'appareil Android ({SHIELD_IP})...")
     try: send_magic_packet(SHIELD_MAC)
-    except: pass
+    except Exception as e: logger.warning(f"[POWER] Erreur Wake-on-LAN: {e}")
     try:
         subprocess.run(["adb", "connect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
         subprocess.run(["adb", "shell", "input", "keyevent", "WAKEUP"], stdout=subprocess.DEVNULL, timeout=5)
         time.sleep(0.5)
         subprocess.run(["adb", "shell", "input", "keyevent", "WAKEUP"], stdout=subprocess.DEVNULL, timeout=5)
-    except: pass
+    except Exception as e: logger.warning(f"[POWER] Erreur réveil ADB: {e}")
     if is_kodi_responsive(): return True
     try: subprocess.run(["adb", "shell", "am", "start", "-n", "org.xbmc.kodi/.Splash"], stdout=subprocess.DEVNULL, timeout=5)
-    except: pass
+    except Exception as e: logger.warning(f"[POWER] Erreur démarrage Kodi ADB: {e}")
     for i in range(45):
         if is_kodi_responsive(): 
             time.sleep(4)
@@ -387,7 +389,7 @@ def verify_api_status():
             r = requests.get(f"https://api.themoviedb.org/3/movie/19995?api_key={TMDB_API_KEY}", timeout=5)
             if r.status_code == 200: logger.info("[API] TMDB : OK ✅")
             else: logger.warning(f"[API] TMDB : Erreur ({r.status_code})")
-        except: logger.error("[API] TMDB : Injoignable")
+        except Exception as e: logger.error(f"[API] TMDB : Injoignable ({e})")
 
     cfg = load_trakt_config()
     token = cfg.get("access_token")
@@ -402,7 +404,7 @@ def verify_api_status():
                 if refresh_trakt_token_online(): logger.info("[API] TRAKT : Renouvellement OK ✅")
                 else: logger.critical("[API] TRAKT : Echec renouvellement ❌")
             else: logger.warning(f"[API] TRAKT : Statut {r.status_code}")
-        except: logger.error("[API] TRAKT : Injoignable")
+        except Exception as e: logger.error(f"[API] TRAKT : Injoignable ({e})")
     logger.info("-" * 30)
 
 # ==========================================
@@ -418,7 +420,7 @@ def get_kodi_active_player():
         for player in data:
             if player.get('type') == 'video':
                 return player.get('playerid')
-    except: pass
+    except Exception as e: logger.error(f"[KODI] Impossible de récupérer le lecteur actif: {e}")
     return None
 
 def get_kodi_player_item(player_id):
@@ -435,7 +437,7 @@ def get_kodi_player_item(player_id):
         auth = (KODI_USER, KODI_PASS) if KODI_USER and KODI_PASS else None
         r = requests.post(KODI_BASE_URL, json=payload, auth=auth, timeout=3)
         return r.json().get('result', {}).get('item')
-    except: pass
+    except Exception as e: logger.error(f"[KODI] Impossible de récupérer l'élément en cours: {e}")
     return None
 
 def stop_kodi_playback(player_id):
@@ -444,7 +446,7 @@ def stop_kodi_playback(player_id):
         auth = (KODI_USER, KODI_PASS) if KODI_USER and KODI_PASS else None
         requests.post(KODI_BASE_URL, json=payload, auth=auth, timeout=3)
         logger.info("[KODI] Lecture arrêtée.")
-    except: pass
+    except Exception as e: logger.error(f"[KODI] Impossible d'arrêter la lecture: {e}")
 
 def get_trakt_next_episode(tmdb_show_id):
     current_token = load_trakt_token()
@@ -473,7 +475,7 @@ def get_trakt_next_episode(tmdb_show_id):
         if r.status_code != 200: return None, None
         next_ep = r.json().get('next_episode')
         if next_ep: return next_ep['season'], next_ep['number']
-    except: pass
+    except Exception as e: logger.error(f"[TRAKT] Erreur lors de la recherche du prochain épisode: {e}")
     return None, None
 
 def search_tmdb_movie(query, year=None, lang="fr"):
@@ -487,7 +489,7 @@ def search_tmdb_movie(query, year=None, lang="fr"):
         if data.get('results'):
             res = data['results'][0]
             return res['id'], res['title'], res.get('release_date', '')[:4]
-    except: pass
+    except Exception as e: logger.error(f"[TMDB] Erreur recherche film: {e}")
     return None, None, None
 
 def search_tmdb_show(query, lang="fr"):
@@ -500,7 +502,7 @@ def search_tmdb_show(query, lang="fr"):
         if data.get('results'):
             res = data['results'][0]
             return res['id'], res['name']
-    except: pass
+    except Exception as e: logger.error(f"[TMDB] Erreur recherche série: {e}")
     return None, None
 
 def check_episode_exists(tmdb_id, season, episode):
@@ -508,7 +510,9 @@ def check_episode_exists(tmdb_id, season, episode):
     try:
         r = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season}/episode/{episode}", params={"api_key": TMDB_API_KEY}, timeout=2)
         return r.status_code == 200
-    except: return True
+    except Exception as e: 
+        logger.error(f"[TMDB] Erreur vérification épisode: {e}")
+        return True
 
 def get_tmdb_last_aired(tmdb_id):
     if not TMDB_API_KEY: return None, None
@@ -516,7 +520,7 @@ def get_tmdb_last_aired(tmdb_id):
         r = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}", params={"api_key": TMDB_API_KEY}, timeout=2)
         last_ep = r.json().get('last_episode_to_air')
         if last_ep: return last_ep['season_number'], last_ep['episode_number']
-    except: pass
+    except Exception as e: logger.error(f"[TMDB] Erreur vérification dernier épisode: {e}")
     return None, None
 
 def get_playback_url(tmdb_id, media_type, season=None, episode=None, force_select=False):
@@ -539,7 +543,7 @@ def worker_process(plugin_url):
     try:
         auth = (KODI_USER, KODI_PASS) if KODI_USER and KODI_PASS else None
         requests.post(KODI_BASE_URL, json=payload, auth=auth, timeout=5)
-    except: pass
+    except Exception as e: logger.error(f"[KODI] Erreur ouverture lecteur: {e}")
     logger.info(">>> FIN PROCESSUS LECTURE")
 
 def change_source_worker(player_id, next_url):
