@@ -1,13 +1,13 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 1.8.0
-# DATE    : 2026-04-11 (CET)
+# VERSION : 1.9.0
+# DATE    : 2026-04-12 (CET)
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
 # DESCRIPTION : 
-# Skill Alexa pour contrôle vocal de Kodi sur Nvidia Shield.
+# Skill Alexa pour contrôle vocal de Kodi.
+# UPDATE v1.9.0 : Support LibreELEC / Raspberry Pi (SSH) + Android TV (ADB).
 # UPDATE v1.8.0 : Ajout de la validation de sécurité ALEXA_SKILL_ID.
-# UPDATE v1.7.5 : Ajout d'une route /health pour l'intégration du Healthcheck.
 # ==============================================================================
 
 from flask import Flask, request, jsonify
@@ -20,6 +20,7 @@ import sys
 import logging
 import json
 import signal
+import paramiko
 from wakeonlan import send_magic_packet
 
 # --- CONFIGURATION LOGGING ---
@@ -31,8 +32,8 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "1.8.0"
-APP_DATE = "2026-04-11"
+APP_VERSION = "1.9.0"
+APP_DATE = "2026-04-12"
 APP_AUTHOR = "Richard Perez"
 
 app = Flask(__name__)
@@ -57,7 +58,12 @@ TRAKT_CLIENT_ID = os.getenv("TRAKT_CLIENT_ID")
 TRAKT_CLIENT_SECRET = os.getenv("TRAKT_CLIENT_SECRET")
 ENV_TRAKT_ACCESS_TOKEN = os.getenv("TRAKT_ACCESS_TOKEN")
 ENV_TRAKT_REFRESH_TOKEN = os.getenv("TRAKT_REFRESH_TOKEN")
-ALEXA_SKILL_ID = os.getenv("ALEXA_SKILL_ID") # Ajout pour sécuriser le webhook
+ALEXA_SKILL_ID = os.getenv("ALEXA_SKILL_ID") 
+
+# --- SYSTEM & OS CONFIG ---
+TARGET_OS = os.getenv("TARGET_OS", "android").lower()
+SSH_USER = os.getenv("SSH_USER", "root")
+SSH_PASS = os.getenv("SSH_PASS", "libreelec")
 
 # Réseau & Kodi
 SHIELD_IP = os.getenv("SHIELD_IP")
@@ -70,8 +76,9 @@ KODI_PASS = os.getenv("KODI_PASS")
 PLAYER_DEFAULT = os.getenv("PLAYER_DEFAULT", "fenlight_auto.json")
 PLAYER_SELECT = os.getenv("PLAYER_SELECT", "fenlight_select.json")
 
-# Auto-Patcher
-FENLIGHT_UTILS_REMOTE_PATH = "/sdcard/Android/data/org.xbmc.kodi/files/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py"
+# Auto-Patcher Chemins distants
+FENLIGHT_UTILS_ANDROID = "/sdcard/Android/data/org.xbmc.kodi/files/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py"
+FENLIGHT_UTILS_LIBREELEC = "/storage/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py"
 FENLIGHT_LOCAL_TEMP = "/tmp/kodi_utils.py"
 PATCH_CHECK_INTERVAL = 3600 
 
@@ -177,63 +184,95 @@ def get_text(key, lang="fr", *args):
 
 def check_and_patch_fenlight():
     if not SHIELD_IP: return
-    if DEBUG_MODE: logger.info(f"[PATCHER] Vérification intégrité Fen Light (kodi_utils.py)...")
+    if DEBUG_MODE: logger.info(f"[PATCHER] Vérification intégrité Fen Light (OS: {TARGET_OS})...")
+    
+    content = ""
+    ssh = None
+    sftp = None
+    
+    # 1. RÉCUPÉRATION DU FICHIER
     try:
-        subprocess.run(["adb", "disconnect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["adb", "connect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+        if TARGET_OS == "android":
+            subprocess.run(["adb", "disconnect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["adb", "connect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+            if os.path.exists(FENLIGHT_LOCAL_TEMP): os.remove(FENLIGHT_LOCAL_TEMP)
+            
+            res = subprocess.run(["adb", "pull", FENLIGHT_UTILS_ANDROID, FENLIGHT_LOCAL_TEMP], capture_output=True, timeout=10)
+            if res.returncode != 0: return 
+            
+            with open(FENLIGHT_LOCAL_TEMP, 'r', encoding='utf-8') as f: 
+                content = f.read()
+
+        elif TARGET_OS == "libreelec":
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(SHIELD_IP, username=SSH_USER, password=SSH_PASS, timeout=5)
+            sftp = ssh.open_sftp()
+            
+            with sftp.file(FENLIGHT_UTILS_LIBREELEC, 'r') as f:
+                content = f.read().decode('utf-8')
     except Exception as e:
-        if DEBUG_MODE: logger.error(f"[PATCHER] Erreur ADB Connect: {e}")
+        if DEBUG_MODE: logger.error(f"[PATCHER] Erreur de connexion/lecture ({TARGET_OS}): {e}")
         return
 
-    if os.path.exists(FENLIGHT_LOCAL_TEMP): os.remove(FENLIGHT_LOCAL_TEMP)
+    # 2. LOGIQUE DE PATCH
+    TARGET_1_ORIG = "if mode == 'playback.%s' % playback_key():"
+    TARGET_1_PATCH = "if True: # mode == 'playback.%s' % playback_key():"
     
-    try:
-        res = subprocess.run(["adb", "pull", FENLIGHT_UTILS_REMOTE_PATH, FENLIGHT_LOCAL_TEMP], capture_output=True, timeout=10)
-        if res.returncode != 0: return 
-    except: return
+    TARGET_2_ORIG = "if not playback_key() in params:"
+    TARGET_2_PATCH = "if False: # not playback_key() in params:"
+    
+    has_patch_1 = TARGET_1_PATCH in content
+    has_patch_2 = TARGET_2_PATCH in content
+    has_orig_1 = TARGET_1_ORIG in content
+    has_orig_2 = TARGET_2_ORIG in content
+    
+    if has_patch_1 and has_patch_2:
+        if DEBUG_MODE: logger.info("[PATCHER] OK : Fichier déjà patché.")
+        if TARGET_OS == "libreelec" and sftp and ssh:
+            sftp.close()
+            ssh.close()
+        return
 
-    try:
-        with open(FENLIGHT_LOCAL_TEMP, 'r', encoding='utf-8') as f: content = f.read()
-        
-        TARGET_1_ORIG = "if mode == 'playback.%s' % playback_key():"
-        TARGET_1_PATCH = "if True: # mode == 'playback.%s' % playback_key():"
-        
-        TARGET_2_ORIG = "if not playback_key() in params:"
-        TARGET_2_PATCH = "if False: # not playback_key() in params:"
-        
-        has_patch_1 = TARGET_1_PATCH in content
-        has_patch_2 = TARGET_2_PATCH in content
-        has_orig_1 = TARGET_1_ORIG in content
-        has_orig_2 = TARGET_2_ORIG in content
-        
-        if has_patch_1 and has_patch_2:
-            if DEBUG_MODE: logger.info("[PATCHER] OK : Fichier déjà patché.")
-            return
+    if not has_orig_1 and not has_patch_1:
+         logger.warning("[PATCHER] ALERTE : Code 'player_check' introuvable dans le fichier local !")
+         return
+    if not has_orig_2 and not has_patch_2:
+         logger.warning("[PATCHER] ALERTE : Code 'external_playback_check' introuvable dans le fichier local !")
+         return
 
-        if not has_orig_1 and not has_patch_1:
-             logger.warning("[PATCHER] ALERTE : Code 'player_check' introuvable dans le fichier local !")
-             return
-        if not has_orig_2 and not has_patch_2:
-             logger.warning("[PATCHER] ALERTE : Code 'external_playback_check' introuvable dans le fichier local !")
-             return
-
-        new_content = content
-        patched = False
-        
-        if has_orig_1:
-            new_content = new_content.replace(TARGET_1_ORIG, TARGET_1_PATCH)
-            patched = True
-        if has_orig_2:
-            new_content = new_content.replace(TARGET_2_ORIG, TARGET_2_PATCH)
-            patched = True
-        
-        if patched:
-            with open(FENLIGHT_LOCAL_TEMP, 'w', encoding='utf-8') as f: f.write(new_content)
-            push_res = subprocess.run(["adb", "push", FENLIGHT_LOCAL_TEMP, FENLIGHT_UTILS_REMOTE_PATH], capture_output=True)
-            if push_res.returncode == 0: logger.info("[PATCHER] SUCCÈS : Patchs appliqués sur kodi_utils.py.")
-            else: logger.error("[PATCHER] ÉCHEC : Impossible d'écrire sur la Shield via ADB.")
-            
-    except Exception as e: logger.error(f"[PATCHER] Erreur lors du patching: {e}")
+    new_content = content
+    patched = False
+    
+    if has_orig_1:
+        new_content = new_content.replace(TARGET_1_ORIG, TARGET_1_PATCH)
+        patched = True
+    if has_orig_2:
+        new_content = new_content.replace(TARGET_2_ORIG, TARGET_2_PATCH)
+        patched = True
+    
+    # 3. ENVOI DU FICHIER PATCHÉ
+    if patched:
+        try:
+            if TARGET_OS == "android":
+                with open(FENLIGHT_LOCAL_TEMP, 'w', encoding='utf-8') as f: 
+                    f.write(new_content)
+                push_res = subprocess.run(["adb", "push", FENLIGHT_LOCAL_TEMP, FENLIGHT_UTILS_ANDROID], capture_output=True)
+                if push_res.returncode == 0: 
+                    logger.info("[PATCHER] SUCCÈS : Patchs appliqués via ADB.")
+                else: 
+                    logger.error("[PATCHER] ÉCHEC : Impossible d'écrire sur la Shield.")
+                    
+            elif TARGET_OS == "libreelec":
+                with sftp.file(FENLIGHT_UTILS_LIBREELEC, 'w') as f:
+                    f.write(new_content)
+                logger.info("[PATCHER] SUCCÈS : Patchs appliqués via SSH.")
+        except Exception as e:
+            logger.error(f"[PATCHER] Erreur lors de l'envoi du fichier patché ({TARGET_OS}): {e}")
+        finally:
+            if TARGET_OS == "libreelec" and sftp and ssh:
+                sftp.close()
+                ssh.close()
 
 def patcher_scheduler():
     while True:
@@ -254,7 +293,12 @@ def is_kodi_responsive():
 def wake_and_start_kodi():
     if not SHIELD_IP or not SHIELD_MAC: return False
     if is_kodi_responsive(): return True
-    logger.info(f"[POWER] Réveil de la Shield ({SHIELD_IP})...")
+    
+    if TARGET_OS == "libreelec":
+        logger.error(f"[POWER] Kodi sur LibreELEC ({SHIELD_IP}) ne répond pas. Vérifiez que l'appareil est allumé.")
+        return False
+
+    logger.info(f"[POWER] Réveil de l'appareil Android ({SHIELD_IP})...")
     try: send_magic_packet(SHIELD_MAC)
     except: pass
     try:
@@ -457,10 +501,8 @@ def alexa_handler():
     # --- SÉCURITÉ : Validation de l'ID de la Skill Alexa ---
     if ALEXA_SKILL_ID:
         try:
-            # Recherche de l'ID dans la structure JSON d'Amazon
             session_app_id = req_data.get('session', {}).get('application', {}).get('applicationId')
             context_app_id = req_data.get('context', {}).get('System', {}).get('application', {}).get('applicationId')
-            
             incoming_app_id = session_app_id or context_app_id
             
             if incoming_app_id != ALEXA_SKILL_ID:
@@ -643,7 +685,8 @@ def print_startup_banner():
     print(f" Author  : {APP_AUTHOR}")
     print(f" Debug   : {'ON' if DEBUG_MODE else 'OFF'}")
     print("="*50)
-    print(f" [NET] Shield IP      : {SHIELD_IP if SHIELD_IP else 'MISSING'}")
+    print(f" [NET] Target OS      : {TARGET_OS.upper()}")
+    print(f" [NET] Device IP      : {SHIELD_IP if SHIELD_IP else 'MISSING'}")
     print(f" [NET] Kodi Endpoint  : {KODI_BASE_URL if KODI_BASE_URL else 'INVALID'}")
     print(f" [CFG] Player Auto    : {PLAYER_DEFAULT if PLAYER_DEFAULT else 'MISSING'}")
     print(f" [API] TMDB Key       : {masked_key}")
