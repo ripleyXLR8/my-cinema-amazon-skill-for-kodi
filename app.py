@@ -33,7 +33,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.0.1"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
