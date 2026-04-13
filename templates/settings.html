@@ -5,6 +5,7 @@
     <p class="text-slate-400 mb-8 text-sm">Ces paramètres remplaceront les variables d'environnement Docker une fois sauvegardés.</p>
     
     <form method="POST" class="space-y-6">
+        <input type="hidden" name="action" value="save_config">
         
         <div class="card p-6 rounded-xl border border-slate-700">
             <h3 class="text-lg font-semibold text-blue-400 mb-4 border-b border-slate-700 pb-2">1. Appareil & Réseau</h3>
@@ -85,5 +86,34 @@
 
         <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-lg transition text-lg mt-6 shadow-lg shadow-blue-600/20">SAUVEGARDER LA CONFIGURATION</button>
     </form>
+
+    <div class="card p-6 rounded-xl border border-slate-700 mt-8 mb-8">
+        <h3 class="text-lg font-semibold text-blue-400 mb-4 border-b border-slate-700 pb-2">4. Authentification Trakt.tv</h3>
+        <p class="text-slate-400 mb-4 text-sm">Générez vos jetons d'accès pour synchroniser votre progression.</p>
+        <form method="POST" class="space-y-4">
+            <input type="hidden" name="action" value="save_trakt">
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">Client ID</label>
+                    <input type="text" name="client_id" id="trakt_client_id" value="{{ trakt_cfg.client_id or '' }}" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">Client Secret</label>
+                    <input type="password" name="client_secret" value="{{ trakt_cfg.client_secret or '' }}" required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+            </div>
+            
+            <div class="pt-4">
+                <label class="block text-sm font-medium text-slate-300 mb-1">Code PIN</label>
+                <div class="flex space-x-4 mb-2">
+                    <input type="text" name="pin_code" placeholder="Collez le code PIN ici" required class="flex-grow bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                    <button type="button" onclick="window.open('https://trakt.tv/oauth/authorize?response_type=code&client_id=' + document.getElementById('trakt_client_id').value + '&redirect_uri=urn:ietf:wg:oauth:2.0:oob')" class="bg-slate-700 hover:bg-slate-600 px-4 rounded-lg transition text-sm font-bold">OBTENIR LE PIN</button>
+                </div>
+            </div>
+            
+            <button type="submit" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 rounded-lg transition mt-4">GÉNÉRER LES TOKENS TRAKT</button>
+        </form>
+    </div>
 </div>
 {% endblock %}

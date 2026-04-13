@@ -1,11 +1,12 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.1.1
+# VERSION : 2.1.2
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
 # DESCRIPTION : 
 # Skill Alexa pour contrôle vocal de Kodi.
+# UPDATE v2.1.2 : Fusion du Trakt Setup dans la page Settings.
 # UPDATE v2.1.1 : Fix NameError PATCH_CHECK_INTERVAL + Masquage warnings Paramiko.
 # UPDATE v2.1.0 : Configuration dynamique depuis l'UI Web.
 # UPDATE v2.0.0 : Ajout du Web UI Control Panel (Dashboard + Trakt Setup).
@@ -56,7 +57,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.1.1"
+APP_VERSION = "2.1.2"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
@@ -88,7 +89,6 @@ def get_app_config():
         try:
             with open(APP_CONFIG_FILE, 'r', encoding='utf-8') as f:
                 file_conf = json.load(f)
-                # Remplace les valeurs par celles du fichier si elles existent
                 for k, v in file_conf.items():
                     config[k] = v
         except Exception as e:
@@ -228,49 +228,53 @@ def dashboard():
 @app.route('/settings', methods=['GET', 'POST'])
 def settings():
     conf = get_app_config()
-    if request.method == 'POST':
-        new_conf = {
-            "TMDB_API_KEY": request.form.get("TMDB_API_KEY", "").strip(),
-            "ALEXA_SKILL_ID": request.form.get("ALEXA_SKILL_ID", "").strip(),
-            "TARGET_OS": request.form.get("TARGET_OS", "android").lower(),
-            "SSH_USER": request.form.get("SSH_USER", "").strip(),
-            "SSH_PASS": request.form.get("SSH_PASS", "").strip(),
-            "SHIELD_IP": request.form.get("SHIELD_IP", "").strip(),
-            "SHIELD_MAC": request.form.get("SHIELD_MAC", "").strip(),
-            "KODI_PORT": request.form.get("KODI_PORT", "8080").strip(),
-            "KODI_USER": request.form.get("KODI_USER", "").strip(),
-            "KODI_PASS": request.form.get("KODI_PASS", "").strip(),
-            "PLAYER_DEFAULT": request.form.get("PLAYER_DEFAULT", "fenlight_auto.json").strip(),
-            "PLAYER_SELECT": request.form.get("PLAYER_SELECT", "fenlight_select.json").strip()
-        }
-        if save_app_config(new_conf):
-            flash("Configuration sauvegardée avec succès !", "success")
-        else:
-            flash("Erreur lors de la sauvegarde de la configuration.", "error")
-        return redirect(url_for('settings'))
+    trakt_cfg = load_trakt_config()
     
-    return render_template('settings.html', version=APP_VERSION, conf=conf)
-
-@app.route('/setup', methods=['GET', 'POST'])
-def trakt_setup():
     if request.method == 'POST':
-        c_id = request.form.get('client_id')
-        c_secret = request.form.get('client_secret')
-        pin = request.form.get('pin_code')
-        url = "https://api.trakt.tv/oauth/token"
-        payload = {"code": pin, "client_id": c_id, "client_secret": c_secret, "redirect_uri": "urn:ietf:wg:oauth:2.0:oob", "grant_type": "authorization_code"}
-        try:
-            r = requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=10)
-            if r.status_code == 200:
-                data = r.json()
-                save_trakt_token_data(data['access_token'], data['refresh_token'], c_id, c_secret)
-                flash("Success! Tokens generated.")
-                return redirect(url_for('dashboard'))
-            else: flash(f"Trakt Error: {r.text}")
-        except Exception as e: flash(f"Error: {str(e)}")
+        action = request.form.get("action")
         
-    cfg = load_trakt_config()
-    return render_template('setup.html', version=APP_VERSION, cfg=cfg)
+        # 1. Sauvegarde de la configuration générale
+        if action == "save_config":
+            new_conf = {
+                "TMDB_API_KEY": request.form.get("TMDB_API_KEY", "").strip(),
+                "ALEXA_SKILL_ID": request.form.get("ALEXA_SKILL_ID", "").strip(),
+                "TARGET_OS": request.form.get("TARGET_OS", "android").lower(),
+                "SSH_USER": request.form.get("SSH_USER", "").strip(),
+                "SSH_PASS": request.form.get("SSH_PASS", "").strip(),
+                "SHIELD_IP": request.form.get("SHIELD_IP", "").strip(),
+                "SHIELD_MAC": request.form.get("SHIELD_MAC", "").strip(),
+                "KODI_PORT": request.form.get("KODI_PORT", "8080").strip(),
+                "KODI_USER": request.form.get("KODI_USER", "").strip(),
+                "KODI_PASS": request.form.get("KODI_PASS", "").strip(),
+                "PLAYER_DEFAULT": request.form.get("PLAYER_DEFAULT", "fenlight_auto.json").strip(),
+                "PLAYER_SELECT": request.form.get("PLAYER_SELECT", "fenlight_select.json").strip()
+            }
+            if save_app_config(new_conf):
+                flash("Configuration sauvegardée avec succès !", "success")
+            else:
+                flash("Erreur lors de la sauvegarde de la configuration.", "error")
+            return redirect(url_for('settings'))
+            
+        # 2. Sauvegarde et génération du Token Trakt
+        elif action == "save_trakt":
+            c_id = request.form.get('client_id')
+            c_secret = request.form.get('client_secret')
+            pin = request.form.get('pin_code')
+            url = "https://api.trakt.tv/oauth/token"
+            payload = {"code": pin, "client_id": c_id, "client_secret": c_secret, "redirect_uri": "urn:ietf:wg:oauth:2.0:oob", "grant_type": "authorization_code"}
+            try:
+                r = requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=10)
+                if r.status_code == 200:
+                    data = r.json()
+                    save_trakt_token_data(data['access_token'], data['refresh_token'], c_id, c_secret)
+                    flash("Tokens Trakt générés avec succès !")
+                else: 
+                    flash(f"Erreur Trakt : {r.text}")
+            except Exception as e: 
+                flash(f"Erreur : {str(e)}")
+            return redirect(url_for('settings'))
+    
+    return render_template('settings.html', version=APP_VERSION, conf=conf, trakt_cfg=trakt_cfg)
 
 @app.route('/health', methods=['GET'])
 def health_check():
