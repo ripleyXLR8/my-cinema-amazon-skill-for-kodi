@@ -111,23 +111,55 @@
 
 <div class="mt-6 card p-6 rounded-xl border border-slate-700">
     <h2 class="text-slate-400 text-sm uppercase font-semibold mb-4">Recherche & Lancement Rapide</h2>
-    <form action="/web-play" method="POST" class="flex flex-col md:flex-row gap-4 items-start md:items-center" onsubmit="this.querySelector('.btn-lancer').innerText = '...'; this.querySelector('.btn-lancer').disabled = true;">
-        <select name="media_type" class="bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none w-full md:w-48">
-            <option value="movie">🎬 Film</option>
-            <option value="show">📺 Série</option>
-        </select>
+    <form action="/web-play" method="POST" class="flex flex-col gap-4" onsubmit="this.querySelector('.btn-lancer').innerText = '...'; this.querySelector('.btn-lancer').disabled = true;">
         
-        <div class="flex-grow w-full">
-            <input type="text" name="query" placeholder="Ex: Inception, Breaking Bad..." required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none">
-            <label class="flex items-center space-x-2 text-sm text-slate-400 mt-2 cursor-pointer w-max">
-                <input type="checkbox" name="force_select" class="rounded bg-slate-900 border-slate-700 text-blue-500 focus:ring-2 focus:ring-blue-500">
-                <span>Forcer la sélection manuelle de la source</span>
-            </label>
+        <div class="flex flex-col md:flex-row gap-4 items-start md:items-center">
+            <select name="media_type" id="media_type_select" class="bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none w-full md:w-48">
+                <option value="movie">🎬 Film</option>
+                <option value="show">📺 Série</option>
+            </select>
+            
+            <div class="flex-grow w-full">
+                <input type="text" name="query" placeholder="Ex: Inception, Breaking Bad..." required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                <label class="flex items-center space-x-2 text-sm text-slate-400 mt-2 cursor-pointer w-max">
+                    <input type="checkbox" name="force_select" class="rounded bg-slate-900 border-slate-700 text-blue-500 focus:ring-2 focus:ring-blue-500">
+                    <span>Forcer la sélection manuelle de la source</span>
+                </label>
+            </div>
+
+            <button type="submit" class="btn-lancer bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-lg transition shadow-lg shadow-blue-600/20 whitespace-nowrap w-full md:w-auto h-full self-stretch md:self-start">
+                LANCER
+            </button>
         </div>
 
-        <button type="submit" class="btn-lancer bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-lg transition shadow-lg shadow-blue-600/20 whitespace-nowrap w-full md:w-auto h-full self-stretch md:self-start">
-            LANCER
-        </button>
+        <div id="show_options_container" class="hidden bg-slate-800/50 p-4 rounded-lg border border-slate-700 mt-2">
+            <p class="text-sm font-medium text-slate-300 mb-3">Options de lecture pour la série :</p>
+            <div class="flex flex-col md:flex-row gap-4 md:items-center">
+                <label class="flex items-center space-x-2 text-sm text-slate-300 cursor-pointer">
+                    <input type="radio" name="show_action" value="resume" checked class="text-blue-500 focus:ring-blue-500 bg-slate-900 border-slate-700">
+                    <span>Reprendre (Dernier vu via Trakt)</span>
+                </label>
+                <label class="flex items-center space-x-2 text-sm text-slate-300 cursor-pointer">
+                    <input type="radio" name="show_action" value="latest" class="text-blue-500 focus:ring-blue-500 bg-slate-900 border-slate-700">
+                    <span>Dernier épisode diffusé</span>
+                </label>
+                <label class="flex items-center space-x-2 text-sm text-slate-300 cursor-pointer">
+                    <input type="radio" name="show_action" value="specific" class="text-blue-500 focus:ring-blue-500 bg-slate-900 border-slate-700">
+                    <span>Choisir un épisode précis</span>
+                </label>
+            </div>
+            
+            <div id="specific_ep_inputs" class="hidden mt-4 flex items-center space-x-4">
+                <div class="flex items-center space-x-2">
+                    <label class="text-xs font-medium text-slate-400">Saison :</label>
+                    <input type="number" name="season" min="1" value="1" class="w-16 bg-slate-900 border border-slate-700 rounded p-1.5 text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none text-center">
+                </div>
+                <div class="flex items-center space-x-2">
+                    <label class="text-xs font-medium text-slate-400">Épisode :</label>
+                    <input type="number" name="episode" min="1" value="1" class="w-16 bg-slate-900 border border-slate-700 rounded p-1.5 text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none text-center">
+                </div>
+            </div>
+        </div>
     </form>
 </div>
 
@@ -197,6 +229,31 @@
             console.error("Erreur de récupération des statuts", e);
         }
     }
+
+    // --- NOUVEAU : Logique d'affichage dynamique pour les séries ---
+    const mediaTypeSelect = document.getElementById('media_type_select');
+    const showOptionsContainer = document.getElementById('show_options_container');
+    const showActionRadios = document.querySelectorAll('input[name="show_action"]');
+    const specificEpInputs = document.getElementById('specific_ep_inputs');
+
+    mediaTypeSelect.addEventListener('change', (e) => {
+        if (e.target.value === 'show') {
+            showOptionsContainer.classList.remove('hidden');
+        } else {
+            showOptionsContainer.classList.add('hidden');
+        }
+    });
+
+    showActionRadios.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            if (e.target.value === 'specific') {
+                specificEpInputs.classList.remove('hidden');
+            } else {
+                specificEpInputs.classList.add('hidden');
+            }
+        });
+    });
+    // -------------------------------------------------------------
 
     // Gestion intelligente du polling
     let logsInterval;
