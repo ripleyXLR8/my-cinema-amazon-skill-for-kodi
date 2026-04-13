@@ -16,6 +16,7 @@
             <h1 class="text-2xl font-bold tracking-tight text-blue-500">🎬 MY CINEMA <span class="text-slate-500 text-sm font-normal">v{{ version }}</span></h1>
             <div class="space-x-6">
                 <a href="/" class="hover:text-blue-400 transition">Dashboard</a>
+                <a href="/settings" class="hover:text-blue-400 transition">Paramètres</a>
                 <a href="/setup" class="hover:text-blue-400 transition">Trakt Setup</a>
             </div>
         </div>
@@ -24,7 +25,7 @@
         {% with messages = get_flashed_messages() %}
           {% if messages %}
             {% for message in messages %}
-              <div class="mb-6 p-4 rounded {% if 'Error' in message or 'Erreur' in message %}bg-red-900/50 border border-red-500 text-red-200{% else %}bg-green-900/50 border border-green-500 text-green-200{% endif %}">
+              <div class="mb-6 p-4 rounded {% if 'Erreur' in message or 'Échec' in message %}bg-red-900/50 border border-red-500 text-red-200{% else %}bg-green-900/50 border border-green-500 text-green-200{% endif %}">
                 {{ message }}
               </div>
             {% endfor %}

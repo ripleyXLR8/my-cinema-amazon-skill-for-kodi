@@ -1,14 +1,14 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.0.11
+# VERSION : 2.1.0
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
 # DESCRIPTION : 
 # Skill Alexa pour contrôle vocal de Kodi.
+# UPDATE v2.1.0 : Configuration dynamique depuis l'UI Web.
 # UPDATE v2.0.0 : Ajout du Web UI Control Panel (Dashboard + Trakt Setup).
 # UPDATE v1.9.0 : Support LibreELEC / Raspberry Pi (SSH) + Android TV (ADB).
-# UPDATE v1.8.0 : Ajout de la validation de sécurité ALEXA_SKILL_ID.
 # ==============================================================================
 
 from flask import Flask, request, jsonify, render_template, redirect, url_for, flash
@@ -25,7 +25,7 @@ import paramiko
 from wakeonlan import send_magic_packet
 
 # ==========================================
-# 1. CONFIGURATION & VARIABLES (Fichiers & Logs)
+# 1. DOSSIERS & LOGGING
 # ==========================================
 
 DATA_DIR = "/app/data"
@@ -34,10 +34,10 @@ if not os.path.exists(DATA_DIR):
 
 LOG_FILE = os.path.join(DATA_DIR, "app.log")
 TOKEN_FILE = os.path.join(DATA_DIR, "trakt_tokens.json")
+APP_CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 
 DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
 
-# --- CONFIGURATION LOGGING ---
 logging.basicConfig(
     level=logging.DEBUG if DEBUG_MODE else logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
@@ -50,51 +50,66 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.0.11"
+APP_VERSION = "2.1.0"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24) # Nécessaire pour sécuriser les sessions et messages Flash
-
-# API KEYS & SECURITE (ENV)
-TMDB_API_KEY = os.getenv("TMDB_API_KEY")
-ENV_TRAKT_CLIENT_ID = os.getenv("TRAKT_CLIENT_ID")
-ENV_TRAKT_CLIENT_SECRET = os.getenv("TRAKT_CLIENT_SECRET")
-ENV_TRAKT_ACCESS_TOKEN = os.getenv("TRAKT_ACCESS_TOKEN")
-ENV_TRAKT_REFRESH_TOKEN = os.getenv("TRAKT_REFRESH_TOKEN")
-ALEXA_SKILL_ID = os.getenv("ALEXA_SKILL_ID") 
-
-# SYSTEM & OS CONFIG
-TARGET_OS = os.getenv("TARGET_OS", "android").lower()
-SSH_USER = os.getenv("SSH_USER", "root")
-SSH_PASS = os.getenv("SSH_PASS", "libreelec")
-
-# Réseau & Kodi
-SHIELD_IP = os.getenv("SHIELD_IP")
-SHIELD_MAC = os.getenv("SHIELD_MAC")
-KODI_PORT = os.getenv("KODI_PORT")
-KODI_USER = os.getenv("KODI_USER")
-KODI_PASS = os.getenv("KODI_PASS")
-
-# Players
-PLAYER_DEFAULT = os.getenv("PLAYER_DEFAULT", "fenlight_auto.json")
-PLAYER_SELECT = os.getenv("PLAYER_SELECT", "fenlight_select.json")
-
-# Auto-Patcher Chemins distants
-FENLIGHT_UTILS_ANDROID = "/sdcard/Android/data/org.xbmc.kodi/files/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py"
-FENLIGHT_UTILS_LIBREELEC = "/storage/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py"
-FENLIGHT_LOCAL_TEMP = "/tmp/kodi_utils.py"
-PATCH_CHECK_INTERVAL = 3600 
-
-if SHIELD_IP and KODI_PORT:
-    KODI_BASE_URL = f"http://{SHIELD_IP}:{KODI_PORT}/jsonrpc"
-else:
-    KODI_BASE_URL = None
-    logger.critical("Configuration incomplète : SHIELD_IP ou KODI_PORT manquant.")
+app.secret_key = os.urandom(24)
 
 # ==========================================
-# 2. GESTION DES TOKENS (TRAKT)
+# 2. GESTION DE LA CONFIGURATION (Dynamique)
+# ==========================================
+
+def get_app_config():
+    """Charge la configuration depuis le fichier JSON, ou utilise les ENV par défaut."""
+    config = {
+        "TMDB_API_KEY": os.getenv("TMDB_API_KEY", ""),
+        "ALEXA_SKILL_ID": os.getenv("ALEXA_SKILL_ID", ""),
+        "TARGET_OS": os.getenv("TARGET_OS", "android").lower(),
+        "SSH_USER": os.getenv("SSH_USER", "root"),
+        "SSH_PASS": os.getenv("SSH_PASS", "libreelec"),
+        "SHIELD_IP": os.getenv("SHIELD_IP", ""),
+        "SHIELD_MAC": os.getenv("SHIELD_MAC", ""),
+        "KODI_PORT": os.getenv("KODI_PORT", "8080"),
+        "KODI_USER": os.getenv("KODI_USER", "kodi"),
+        "KODI_PASS": os.getenv("KODI_PASS", "kodi"),
+        "PLAYER_DEFAULT": os.getenv("PLAYER_DEFAULT", "fenlight_auto.json"),
+        "PLAYER_SELECT": os.getenv("PLAYER_SELECT", "fenlight_select.json")
+    }
+    
+    if os.path.exists(APP_CONFIG_FILE):
+        try:
+            with open(APP_CONFIG_FILE, 'r', encoding='utf-8') as f:
+                file_conf = json.load(f)
+                # Remplace les valeurs par celles du fichier si elles existent
+                for k, v in file_conf.items():
+                    config[k] = v
+        except Exception as e:
+            logger.error(f"[CONFIG] Erreur lecture config.json : {e}")
+            
+    return config
+
+def save_app_config(new_config):
+    """Sauvegarde la configuration dans le fichier JSON persistant."""
+    try:
+        with open(APP_CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(new_config, f, indent=4)
+        logger.info("[CONFIG] Configuration globale sauvegardée avec succès.")
+        return True
+    except Exception as e:
+        logger.error(f"[CONFIG] Erreur sauvegarde config.json : {e}")
+        return False
+
+def get_kodi_url(conf):
+    ip = conf.get("SHIELD_IP")
+    port = conf.get("KODI_PORT")
+    if ip and port:
+        return f"http://{ip}:{port}/jsonrpc"
+    return None
+
+# ==========================================
+# 3. GESTION DES TOKENS (TRAKT)
 # ==========================================
 
 def save_trakt_token_data(access_token, refresh_token, client_id=None, client_secret=None):
@@ -107,7 +122,7 @@ def save_trakt_token_data(access_token, refresh_token, client_id=None, client_se
     if client_secret: data["client_secret"] = client_secret
 
     try:
-        with open(TOKEN_FILE, 'w') as f: 
+        with open(TOKEN_FILE, 'w', encoding='utf-8') as f: 
             json.dump(data, f)
         logger.info("[TOKEN] Tokens sauvegardés dans trakt_tokens.json ✅")
         return True
@@ -117,14 +132,14 @@ def save_trakt_token_data(access_token, refresh_token, client_id=None, client_se
 
 def load_trakt_config():
     config = {
-        "access_token": ENV_TRAKT_ACCESS_TOKEN,
-        "refresh_token": ENV_TRAKT_REFRESH_TOKEN,
-        "client_id": ENV_TRAKT_CLIENT_ID,
-        "client_secret": ENV_TRAKT_CLIENT_SECRET
+        "access_token": os.getenv("TRAKT_ACCESS_TOKEN", ""),
+        "refresh_token": os.getenv("TRAKT_REFRESH_TOKEN", ""),
+        "client_id": os.getenv("TRAKT_CLIENT_ID", ""),
+        "client_secret": os.getenv("TRAKT_CLIENT_SECRET", "")
     }
     if os.path.exists(TOKEN_FILE):
         try:
-            with open(TOKEN_FILE, 'r') as f:
+            with open(TOKEN_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 for key in config.keys():
                     if data.get(key): config[key] = data[key]
@@ -169,37 +184,66 @@ def refresh_trakt_token_online():
     return None
 
 # ==========================================
-# 3. ROUTES FLASK (WEB & API)
+# 4. ROUTES FLASK (WEB UI)
 # ==========================================
 
 @app.route('/')
 def dashboard():
-    device_ok = is_device_online(SHIELD_IP)
+    conf = get_app_config()
+    device_ok = is_device_online(conf.get('SHIELD_IP'))
     kodi_ok = is_kodi_responsive()
     
     tmdb_ok = False
-    try:
-        r = requests.get(f"https://api.themoviedb.org/3/movie/19995?api_key={TMDB_API_KEY}", timeout=3)
-        tmdb_ok = (r.status_code == 200)
-    except Exception as e: 
-        logger.warning(f"[DASHBOARD] Vérification TMDB échouée: {e}")
+    tmdb_key = conf.get('TMDB_API_KEY')
+    if tmdb_key:
+        try:
+            r = requests.get(f"https://api.themoviedb.org/3/movie/19995?api_key={tmdb_key}", timeout=3)
+            tmdb_ok = (r.status_code == 200)
+        except Exception as e: 
+            logger.warning(f"[DASHBOARD] Vérification TMDB échouée: {e}")
     
-    cfg = load_trakt_config()
+    trakt_cfg = load_trakt_config()
     
     return render_template(
         'dashboard.html', 
         version=APP_VERSION, 
         device_ok=device_ok,
         kodi_ok=kodi_ok, 
-        shield_ip=SHIELD_IP, 
-        target_os=TARGET_OS, 
+        shield_ip=conf.get('SHIELD_IP') or "Non configuré", 
+        target_os=conf.get('TARGET_OS'), 
         tmdb_ok=tmdb_ok, 
-        tmdb_key_masked=f"{TMDB_API_KEY[:4]}...{TMDB_API_KEY[-4:]}" if TMDB_API_KEY else "MISSING", 
-        trakt_ok=bool(cfg.get("access_token")),
-        p_def=PLAYER_DEFAULT,
-        p_sel=PLAYER_SELECT,
-        skill_id=ALEXA_SKILL_ID
+        tmdb_key_masked=f"{tmdb_key[:4]}...{tmdb_key[-4:]}" if tmdb_key else "MISSING", 
+        trakt_ok=bool(trakt_cfg.get("access_token")),
+        p_def=conf.get('PLAYER_DEFAULT'),
+        p_sel=conf.get('PLAYER_SELECT'),
+        skill_id=conf.get('ALEXA_SKILL_ID')
     )
+
+@app.route('/settings', methods=['GET', 'POST'])
+def settings():
+    conf = get_app_config()
+    if request.method == 'POST':
+        new_conf = {
+            "TMDB_API_KEY": request.form.get("TMDB_API_KEY", "").strip(),
+            "ALEXA_SKILL_ID": request.form.get("ALEXA_SKILL_ID", "").strip(),
+            "TARGET_OS": request.form.get("TARGET_OS", "android").lower(),
+            "SSH_USER": request.form.get("SSH_USER", "").strip(),
+            "SSH_PASS": request.form.get("SSH_PASS", "").strip(),
+            "SHIELD_IP": request.form.get("SHIELD_IP", "").strip(),
+            "SHIELD_MAC": request.form.get("SHIELD_MAC", "").strip(),
+            "KODI_PORT": request.form.get("KODI_PORT", "8080").strip(),
+            "KODI_USER": request.form.get("KODI_USER", "").strip(),
+            "KODI_PASS": request.form.get("KODI_PASS", "").strip(),
+            "PLAYER_DEFAULT": request.form.get("PLAYER_DEFAULT", "fenlight_auto.json").strip(),
+            "PLAYER_SELECT": request.form.get("PLAYER_SELECT", "fenlight_select.json").strip()
+        }
+        if save_app_config(new_conf):
+            flash("Configuration sauvegardée avec succès !", "success")
+        else:
+            flash("Erreur lors de la sauvegarde de la configuration.", "error")
+        return redirect(url_for('settings'))
+    
+    return render_template('settings.html', version=APP_VERSION, conf=conf)
 
 @app.route('/setup', methods=['GET', 'POST'])
 def trakt_setup():
@@ -226,38 +270,49 @@ def trakt_setup():
 def health_check():
     return jsonify({"status": "healthy", "version": APP_VERSION}), 200
 
+# ==========================================
+# ROUTES DIAGNOSTIC MANUEL (Dashboard)
+# ==========================================
+
 @app.route('/wake-device', methods=['POST'])
 def wake_device_route():
     logger.info("[WEB] Commande manuelle : Wake Device.")
-    if SHIELD_MAC:
-        try: send_magic_packet(SHIELD_MAC)
+    conf = get_app_config()
+    mac = conf.get("SHIELD_MAC")
+    ip = conf.get("SHIELD_IP")
+    target = conf.get("TARGET_OS")
+
+    if mac:
+        try: send_magic_packet(mac)
         except Exception as e: logger.warning(f"[POWER] Erreur WoL: {e}")
-    if TARGET_OS == "android":
+    if target == "android" and ip:
         try:
-            subprocess.run(["adb", "connect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+            subprocess.run(["adb", "connect", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
             subprocess.run(["adb", "shell", "input", "keyevent", "WAKEUP"], stdout=subprocess.DEVNULL, timeout=5)
         except Exception as e: logger.warning(f"[POWER] Erreur ADB WAKEUP: {e}")
-    flash("Signal de réveil (WoL / ADB) envoyé à l'appareil.")
+    flash("Signal de réveil envoyé à l'appareil.")
     return redirect(url_for('dashboard'))
 
 @app.route('/shutdown-device', methods=['POST'])
 def shutdown_device_route():
     logger.info("[WEB] Commande manuelle : Shutdown/Sleep Device.")
-    if TARGET_OS == "android":
+    conf = get_app_config()
+    ip = conf.get("SHIELD_IP")
+    target = conf.get("TARGET_OS")
+
+    if target == "android" and ip:
         try:
-            subprocess.run(["adb", "connect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
-            # Remplacement de reboot -p par la mise en veille
+            subprocess.run(["adb", "connect", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
             subprocess.run(["adb", "shell", "input", "keyevent", "SLEEP"], stdout=subprocess.DEVNULL, timeout=5)
             flash("Commande de mise en veille envoyée à l'appareil Android.")
         except Exception as e:
             logger.error(f"[POWER] Erreur ADB SLEEP: {e}")
             flash(f"Erreur de mise en veille ADB : {e}")
-    elif TARGET_OS == "libreelec":
+    elif target == "libreelec" and ip:
         try:
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(SHIELD_IP, username=SSH_USER, password=SSH_PASS, timeout=5)
-            # LibreELEC n'a pas toujours de mode veille standard, on maintient poweroff
+            ssh.connect(ip, username=conf.get("SSH_USER"), password=conf.get("SSH_PASS"), timeout=5)
             ssh.exec_command("poweroff")
             ssh.close()
             flash("Commande d'extinction envoyée via SSH (LibreELEC).")
@@ -269,9 +324,11 @@ def shutdown_device_route():
 @app.route('/start-kodi', methods=['POST'])
 def start_kodi_route():
     logger.info("[WEB] Commande manuelle : Start Kodi.")
-    if TARGET_OS == "android":
+    conf = get_app_config()
+    ip = conf.get("SHIELD_IP")
+    if conf.get("TARGET_OS") == "android" and ip:
         try:
-            subprocess.run(["adb", "connect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+            subprocess.run(["adb", "connect", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
             subprocess.run(["adb", "shell", "am", "start", "-n", "org.xbmc.kodi/.Splash"], stdout=subprocess.DEVNULL, timeout=5)
             flash("Commande de lancement de Kodi envoyée via ADB.")
         except Exception as e:
@@ -284,14 +341,17 @@ def start_kodi_route():
 @app.route('/stop-kodi', methods=['POST'])
 def stop_kodi_route():
     logger.info("[WEB] Commande manuelle : Stop Kodi.")
+    conf = get_app_config()
+    kodi_url = get_kodi_url(conf)
+    ip = conf.get("SHIELD_IP")
     quit_success = False
     
-    # Vérifier si Kodi répond d'abord avant de tenter la fermeture douce via JSON-RPC
     if is_kodi_responsive():
         try:
             payload = {"jsonrpc": "2.0", "method": "Application.Quit", "id": 1}
-            auth = (KODI_USER, KODI_PASS) if KODI_USER and KODI_PASS else None
-            r = requests.post(KODI_BASE_URL, json=payload, auth=auth, timeout=3)
+            user, pwd = conf.get("KODI_USER"), conf.get("KODI_PASS")
+            auth = (user, pwd) if user and pwd else None
+            r = requests.post(kodi_url, json=payload, auth=auth, timeout=3)
             if r.status_code == 200:
                 quit_success = True
                 flash("Kodi s'est arrêté proprement (JSON-RPC).")
@@ -300,29 +360,35 @@ def stop_kodi_route():
         except Exception as e:
             logger.warning(f"[POWER] Erreur inattendue JSON-RPC Quit: {e}")
     else:
-        logger.info("[POWER] Kodi ne répond pas au réseau, passage direct au fallback ADB.")
+        logger.info("[POWER] Kodi ne répond pas, passage au fallback ADB.")
 
-    # Fallback pour Android : Forcer l'arrêt si l'API ne répond pas ou si Kodi est déjà hors ligne
-    if TARGET_OS == "android" and not quit_success:
+    if conf.get("TARGET_OS") == "android" and not quit_success and ip:
         try:
-            subprocess.run(["adb", "connect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+            subprocess.run(["adb", "connect", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
             subprocess.run(["adb", "shell", "am", "force-stop", "org.xbmc.kodi"], stdout=subprocess.DEVNULL, timeout=5)
             flash("Commande d'arrêt envoyée via ADB.")
         except Exception as e:
             logger.error(f"[POWER] Erreur ADB FORCE-STOP: {e}")
             flash(f"Erreur lors de la fermeture de Kodi : {e}")
     elif not quit_success:
-        flash("Impossible de fermer Kodi de force (OS non-Android).")
+        flash("Impossible de fermer Kodi de force (OS non-Android ou hors ligne).")
         
     return redirect(url_for('dashboard'))
 
 @app.route('/test-connection', methods=['POST'])
 def test_connection_route():
     logger.info("[WEB] Commande manuelle : Test Connection (ADB/SSH).")
-    if TARGET_OS == "android":
+    conf = get_app_config()
+    ip = conf.get("SHIELD_IP")
+    target = conf.get("TARGET_OS")
+
+    if not ip:
+        flash("Veuillez d'abord configurer une IP dans les Paramètres.")
+        return redirect(url_for('dashboard'))
+
+    if target == "android":
         try:
-            subprocess.run(["adb", "connect", SHIELD_IP], capture_output=True, timeout=5)
-            # On exécute une commande shell basique pour valider la communication
+            subprocess.run(["adb", "connect", ip], capture_output=True, timeout=5)
             res = subprocess.run(["adb", "shell", "echo", "ADB_OK"], capture_output=True, text=True, timeout=5)
             if "ADB_OK" in res.stdout:
                 flash("Test de connexion ADB réussi ✅")
@@ -332,11 +398,11 @@ def test_connection_route():
             logger.warning(f"[TEST] Erreur lors du test ADB : {e}")
             flash(f"Erreur lors de la tentative de connexion ADB : {e}")
             
-    elif TARGET_OS == "libreelec":
+    elif target == "libreelec":
         try:
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(SHIELD_IP, username=SSH_USER, password=SSH_PASS, timeout=5)
+            ssh.connect(ip, username=conf.get("SSH_USER"), password=conf.get("SSH_PASS"), timeout=5)
             stdin, stdout, stderr = ssh.exec_command("echo SSH_OK")
             out = stdout.read().decode('utf-8').strip()
             ssh.close()
@@ -353,20 +419,18 @@ def test_connection_route():
 
 @app.route('/api/logs', methods=['GET'])
 def api_logs():
-    """Renvoie les 150 dernières lignes du fichier de log pour l'UI Web."""
     try:
         if not os.path.exists(LOG_FILE):
             return jsonify({"logs": "Aucun log disponible pour le moment."})
         with open(LOG_FILE, 'r', encoding='utf-8') as f:
             lines = f.readlines()
-            # On ne garde que les 150 dernières lignes pour éviter de surcharger la page
             last_lines = lines[-150:]
         return jsonify({"logs": "".join(last_lines)})
     except Exception as e:
         return jsonify({"logs": f"Erreur lors de la lecture des logs : {e}"})
 
 # ==========================================
-# 4. TRADUCTIONS & PATCHER
+# 5. TRADUCTIONS & PATCHER
 # ==========================================
 TRANSLATIONS = {}
 
@@ -392,6 +456,9 @@ def get_text(key, lang="fr", *args):
     return text_template
 
 def check_and_patch_fenlight():
+    conf = get_app_config()
+    SHIELD_IP = conf.get("SHIELD_IP")
+    TARGET_OS = conf.get("TARGET_OS")
     if not SHIELD_IP: return
     if DEBUG_MODE: logger.info(f"[PATCHER] Vérification intégrité Fen Light (OS: {TARGET_OS})...")
     
@@ -405,7 +472,7 @@ def check_and_patch_fenlight():
             subprocess.run(["adb", "connect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
             if os.path.exists(FENLIGHT_LOCAL_TEMP): os.remove(FENLIGHT_LOCAL_TEMP)
             
-            res = subprocess.run(["adb", "pull", FENLIGHT_UTILS_ANDROID, FENLIGHT_LOCAL_TEMP], capture_output=True, timeout=10)
+            res = subprocess.run(["adb", "pull", "/sdcard/Android/data/org.xbmc.kodi/files/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py", FENLIGHT_LOCAL_TEMP], capture_output=True, timeout=10)
             if res.returncode != 0: return 
             
             with open(FENLIGHT_LOCAL_TEMP, 'r', encoding='utf-8') as f: 
@@ -414,10 +481,10 @@ def check_and_patch_fenlight():
         elif TARGET_OS == "libreelec":
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(SHIELD_IP, username=SSH_USER, password=SSH_PASS, timeout=5)
+            ssh.connect(SHIELD_IP, username=conf.get("SSH_USER"), password=conf.get("SSH_PASS"), timeout=5)
             sftp = ssh.open_sftp()
             
-            with sftp.file(FENLIGHT_UTILS_LIBREELEC, 'r') as f:
+            with sftp.file("/storage/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py", 'r') as f:
                 content = f.read().decode('utf-8')
     except Exception as e:
         if DEBUG_MODE: logger.error(f"[PATCHER] Erreur de connexion/lecture ({TARGET_OS}): {e}")
@@ -462,14 +529,14 @@ def check_and_patch_fenlight():
             if TARGET_OS == "android":
                 with open(FENLIGHT_LOCAL_TEMP, 'w', encoding='utf-8') as f: 
                     f.write(new_content)
-                push_res = subprocess.run(["adb", "push", FENLIGHT_LOCAL_TEMP, FENLIGHT_UTILS_ANDROID], capture_output=True)
+                push_res = subprocess.run(["adb", "push", FENLIGHT_LOCAL_TEMP, "/sdcard/Android/data/org.xbmc.kodi/files/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py"], capture_output=True)
                 if push_res.returncode == 0: 
                     logger.info("[PATCHER] SUCCÈS : Patchs appliqués via ADB.")
                 else: 
                     logger.error("[PATCHER] ÉCHEC : Impossible d'écrire sur la Shield.")
                     
             elif TARGET_OS == "libreelec":
-                with sftp.file(FENLIGHT_UTILS_LIBREELEC, 'w') as f:
+                with sftp.file("/storage/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py", 'w') as f:
                     f.write(new_content)
                 logger.info("[PATCHER] SUCCÈS : Patchs appliqués via SSH.")
         except Exception as e:
@@ -485,14 +552,12 @@ def patcher_scheduler():
         time.sleep(PATCH_CHECK_INTERVAL)
 
 # ==========================================
-# 5. GESTION PUISSANCE
+# 6. GESTION PUISSANCE
 # ==========================================
 
 def is_device_online(ip):
-    """Utilise un ping système pour vérifier si l'appareil est sur le réseau."""
     if not ip: return False
     try:
-        # -c 1 : 1 paquet | -W 1 : timeout de 1 seconde
         res = subprocess.run(["ping", "-c", "1", "-W", "1", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return res.returncode == 0
     except Exception as e:
@@ -500,34 +565,42 @@ def is_device_online(ip):
         return False
 
 def is_kodi_responsive():
-    """Vérifie si le serveur JSON-RPC de Kodi répond."""
-    if not KODI_BASE_URL: return False
+    conf = get_app_config()
+    kodi_url = get_kodi_url(conf)
+    if not kodi_url: return False
     try:
-        r = requests.get(KODI_BASE_URL, timeout=2)
+        r = requests.get(kodi_url, timeout=2)
         if r.status_code in [200, 401, 405]: return True
     except Exception as e: 
         if DEBUG_MODE: logger.debug(f"[KODI] Non responsive: {e}")
     return False
 
 def wake_and_start_kodi():
-    """Méthode globale utilisée par les commandes Alexa."""
-    if not SHIELD_IP or not SHIELD_MAC: return False
+    conf = get_app_config()
+    ip = conf.get("SHIELD_IP")
+    mac = conf.get("SHIELD_MAC")
+    target = conf.get("TARGET_OS")
+    
+    if not ip: return False
     if is_kodi_responsive(): return True
     
-    if TARGET_OS == "libreelec":
-        logger.error(f"[POWER] Kodi sur LibreELEC ({SHIELD_IP}) ne répond pas. Vérifiez que l'appareil est allumé.")
+    if target == "libreelec":
+        logger.error(f"[POWER] Kodi sur LibreELEC ({ip}) ne répond pas. Vérifiez que l'appareil est allumé.")
         return False
 
-    logger.info(f"[POWER] Réveil de l'appareil Android ({SHIELD_IP})...")
-    try: send_magic_packet(SHIELD_MAC)
-    except Exception as e: logger.warning(f"[POWER] Erreur Wake-on-LAN: {e}")
+    logger.info(f"[POWER] Réveil de l'appareil Android ({ip})...")
+    if mac:
+        try: send_magic_packet(mac)
+        except Exception as e: logger.warning(f"[POWER] Erreur Wake-on-LAN: {e}")
     try:
-        subprocess.run(["adb", "connect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+        subprocess.run(["adb", "connect", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
         subprocess.run(["adb", "shell", "input", "keyevent", "WAKEUP"], stdout=subprocess.DEVNULL, timeout=5)
         time.sleep(0.5)
         subprocess.run(["adb", "shell", "input", "keyevent", "WAKEUP"], stdout=subprocess.DEVNULL, timeout=5)
     except Exception as e: logger.warning(f"[POWER] Erreur réveil ADB: {e}")
+    
     if is_kodi_responsive(): return True
+    
     try: subprocess.run(["adb", "shell", "am", "start", "-n", "org.xbmc.kodi/.Splash"], stdout=subprocess.DEVNULL, timeout=5)
     except Exception as e: logger.warning(f"[POWER] Erreur démarrage Kodi ADB: {e}")
     for i in range(45):
@@ -538,14 +611,16 @@ def wake_and_start_kodi():
     return False
 
 # ==========================================
-# 6. API CHECKER
+# 7. HELPERS (KODI CONTROL & TMDB)
 # ==========================================
 def verify_api_status():
+    conf = get_app_config()
+    tmdb_key = conf.get("TMDB_API_KEY")
     logger.info("--- VÉRIFICATION DES ACCÈS API ---")
-    if not TMDB_API_KEY: logger.error("[API] TMDB_API_KEY manquant !")
+    if not tmdb_key: logger.error("[API] TMDB_API_KEY manquant !")
     else:
         try:
-            r = requests.get(f"https://api.themoviedb.org/3/movie/19995?api_key={TMDB_API_KEY}", timeout=5)
+            r = requests.get(f"https://api.themoviedb.org/3/movie/19995?api_key={tmdb_key}", timeout=5)
             if r.status_code == 200: logger.info("[API] TMDB : OK ✅")
             else: logger.warning(f"[API] TMDB : Erreur ({r.status_code})")
         except Exception as e: logger.error(f"[API] TMDB : Injoignable ({e})")
@@ -566,15 +641,15 @@ def verify_api_status():
         except Exception as e: logger.error(f"[API] TRAKT : Injoignable ({e})")
     logger.info("-" * 30)
 
-# ==========================================
-# 7. HELPERS (KODI CONTROL & TMDB)
-# ==========================================
-
 def get_kodi_active_player():
+    conf = get_app_config()
+    kodi_url = get_kodi_url(conf)
+    if not kodi_url: return None
     payload = {"jsonrpc": "2.0", "method": "Player.GetActivePlayers", "id": 1}
     try:
-        auth = (KODI_USER, KODI_PASS) if KODI_USER and KODI_PASS else None
-        r = requests.post(KODI_BASE_URL, json=payload, auth=auth, timeout=3)
+        user, pwd = conf.get("KODI_USER"), conf.get("KODI_PASS")
+        auth = (user, pwd) if user and pwd else None
+        r = requests.post(kodi_url, json=payload, auth=auth, timeout=3)
         data = r.json().get('result', [])
         for player in data:
             if player.get('type') == 'video':
@@ -583,6 +658,9 @@ def get_kodi_active_player():
     return None
 
 def get_kodi_player_item(player_id):
+    conf = get_app_config()
+    kodi_url = get_kodi_url(conf)
+    if not kodi_url: return None
     payload = {
         "jsonrpc": "2.0", 
         "method": "Player.GetItem", 
@@ -593,17 +671,22 @@ def get_kodi_player_item(player_id):
         "id": 1
     }
     try:
-        auth = (KODI_USER, KODI_PASS) if KODI_USER and KODI_PASS else None
-        r = requests.post(KODI_BASE_URL, json=payload, auth=auth, timeout=3)
+        user, pwd = conf.get("KODI_USER"), conf.get("KODI_PASS")
+        auth = (user, pwd) if user and pwd else None
+        r = requests.post(kodi_url, json=payload, auth=auth, timeout=3)
         return r.json().get('result', {}).get('item')
     except Exception as e: logger.error(f"[KODI] Impossible de récupérer l'élément en cours: {e}")
     return None
 
 def stop_kodi_playback(player_id):
+    conf = get_app_config()
+    kodi_url = get_kodi_url(conf)
+    if not kodi_url: return
     payload = {"jsonrpc": "2.0", "method": "Player.Stop", "params": {"playerid": player_id}, "id": 1}
     try:
-        auth = (KODI_USER, KODI_PASS) if KODI_USER and KODI_PASS else None
-        requests.post(KODI_BASE_URL, json=payload, auth=auth, timeout=3)
+        user, pwd = conf.get("KODI_USER"), conf.get("KODI_PASS")
+        auth = (user, pwd) if user and pwd else None
+        requests.post(kodi_url, json=payload, auth=auth, timeout=3)
         logger.info("[KODI] Lecture arrêtée.")
     except Exception as e: logger.error(f"[KODI] Impossible d'arrêter la lecture: {e}")
 
@@ -638,9 +721,11 @@ def get_trakt_next_episode(tmdb_show_id):
     return None, None
 
 def search_tmdb_movie(query, year=None, lang="fr"):
-    if not TMDB_API_KEY: return None, None, None
+    conf = get_app_config()
+    tmdb_key = conf.get("TMDB_API_KEY")
+    if not tmdb_key: return None, None, None
     tmdb_lang = "fr-FR" if lang == "fr" else "en-US"
-    params = {"api_key": TMDB_API_KEY, "query": query, "language": tmdb_lang}
+    params = {"api_key": tmdb_key, "query": query, "language": tmdb_lang}
     if year: params['year'] = year
     try:
         r = requests.get("https://api.themoviedb.org/3/search/movie", params=params, timeout=2)
@@ -652,9 +737,11 @@ def search_tmdb_movie(query, year=None, lang="fr"):
     return None, None, None
 
 def search_tmdb_show(query, lang="fr"):
-    if not TMDB_API_KEY: return None, None
+    conf = get_app_config()
+    tmdb_key = conf.get("TMDB_API_KEY")
+    if not tmdb_key: return None, None
     tmdb_lang = "fr-FR" if lang == "fr" else "en-US"
-    params = {"api_key": TMDB_API_KEY, "query": query, "language": tmdb_lang}
+    params = {"api_key": tmdb_key, "query": query, "language": tmdb_lang}
     try:
         r = requests.get("https://api.themoviedb.org/3/search/tv", params=params, timeout=2)
         data = r.json()
@@ -665,26 +752,31 @@ def search_tmdb_show(query, lang="fr"):
     return None, None
 
 def check_episode_exists(tmdb_id, season, episode):
-    if not TMDB_API_KEY: return False
+    conf = get_app_config()
+    tmdb_key = conf.get("TMDB_API_KEY")
+    if not tmdb_key: return False
     try:
-        r = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season}/episode/{episode}", params={"api_key": TMDB_API_KEY}, timeout=2)
+        r = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season}/episode/{episode}", params={"api_key": tmdb_key}, timeout=2)
         return r.status_code == 200
     except Exception as e: 
         logger.error(f"[TMDB] Erreur vérification épisode: {e}")
         return True
 
 def get_tmdb_last_aired(tmdb_id):
-    if not TMDB_API_KEY: return None, None
+    conf = get_app_config()
+    tmdb_key = conf.get("TMDB_API_KEY")
+    if not tmdb_key: return None, None
     try:
-        r = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}", params={"api_key": TMDB_API_KEY}, timeout=2)
+        r = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}", params={"api_key": tmdb_key}, timeout=2)
         last_ep = r.json().get('last_episode_to_air')
         if last_ep: return last_ep['season_number'], last_ep['episode_number']
     except Exception as e: logger.error(f"[TMDB] Erreur vérification dernier épisode: {e}")
     return None, None
 
 def get_playback_url(tmdb_id, media_type, season=None, episode=None, force_select=False):
-    p_def = PLAYER_DEFAULT if PLAYER_DEFAULT else "fenlight_auto.json"
-    p_sel = PLAYER_SELECT if PLAYER_SELECT else "fenlight_select.json"
+    conf = get_app_config()
+    p_def = conf.get("PLAYER_DEFAULT") or "fenlight_auto.json"
+    p_sel = conf.get("PLAYER_SELECT") or "fenlight_select.json"
     target_player = p_sel if force_select else p_def
     base = "plugin://plugin.video.themoviedb.helper/?info=play"
     url = f"{base}&player={target_player}"
@@ -698,11 +790,15 @@ def worker_process(plugin_url):
         logger.error(">>> ABANDON : Kodi injoignable.")
         return
     logger.info(f"[KODI] Envoi URL : {plugin_url}")
-    payload = {"jsonrpc": "2.0", "method": "Player.Open", "params": {"item": {"file": plugin_url}}, "id": 1}
-    try:
-        auth = (KODI_USER, KODI_PASS) if KODI_USER and KODI_PASS else None
-        requests.post(KODI_BASE_URL, json=payload, auth=auth, timeout=5)
-    except Exception as e: logger.error(f"[KODI] Erreur ouverture lecteur: {e}")
+    conf = get_app_config()
+    kodi_url = get_kodi_url(conf)
+    if kodi_url:
+        payload = {"jsonrpc": "2.0", "method": "Player.Open", "params": {"item": {"file": plugin_url}}, "id": 1}
+        try:
+            user, pwd = conf.get("KODI_USER"), conf.get("KODI_PASS")
+            auth = (user, pwd) if user and pwd else None
+            requests.post(kodi_url, json=payload, auth=auth, timeout=5)
+        except Exception as e: logger.error(f"[KODI] Erreur ouverture lecteur: {e}")
     logger.info(">>> FIN PROCESSUS LECTURE")
 
 def change_source_worker(player_id, next_url):
@@ -719,14 +815,17 @@ def alexa_handler():
     req_data = request.get_json()
     if not req_data or 'request' not in req_data: return jsonify({"error": "Invalid Request"}), 400
 
+    conf = get_app_config()
+    skill_id = conf.get("ALEXA_SKILL_ID")
+
     # --- SÉCURITÉ : Validation de l'ID de la Skill Alexa ---
-    if ALEXA_SKILL_ID:
+    if skill_id:
         try:
             session_app_id = req_data.get('session', {}).get('application', {}).get('applicationId')
             context_app_id = req_data.get('context', {}).get('System', {}).get('application', {}).get('applicationId')
             incoming_app_id = session_app_id or context_app_id
             
-            if incoming_app_id != ALEXA_SKILL_ID:
+            if incoming_app_id != skill_id:
                 logger.warning(f"[SÉCURITÉ] ALERTE: Requête rejetée. Skill ID non reconnu ({incoming_app_id})")
                 return jsonify({"error": "Forbidden"}), 403
         except Exception as e:
@@ -894,10 +993,13 @@ signal.signal(signal.SIGTERM, handle_sigterm)
 
 # --- STARTUP ---
 def print_startup_banner():
-    masked_key = f"{TMDB_API_KEY[:4]}...{TMDB_API_KEY[-4:]}" if TMDB_API_KEY else "MISSING"
+    conf = get_app_config()
+    tmdb = conf.get("TMDB_API_KEY", "")
+    masked_key = f"{tmdb[:4]}...{tmdb[-4:]}" if tmdb else "MISSING"
+    
     cfg = load_trakt_config()
     masked_trakt = "Loaded" if cfg.get("access_token") else "MISSING"
-    skill_sec = "ACTIVE" if ALEXA_SKILL_ID else "DISABLED (WARNING)"
+    skill_sec = "ACTIVE" if conf.get("ALEXA_SKILL_ID") else "DISABLED (WARNING)"
 
     print("\n" + "="*50)
     print(f" KODI ALEXA CONTROLLER")
@@ -907,10 +1009,9 @@ def print_startup_banner():
     print(f" Debug   : {'ON' if DEBUG_MODE else 'OFF'}")
     print("="*50)
     print(f" [WEB] WebUI Dashboard: Active on Port 5000")
-    print(f" [NET] Target OS      : {TARGET_OS.upper()}")
-    print(f" [NET] Device IP      : {SHIELD_IP if SHIELD_IP else 'MISSING'}")
-    print(f" [NET] Kodi Endpoint  : {KODI_BASE_URL if KODI_BASE_URL else 'INVALID'}")
-    print(f" [CFG] Player Auto    : {PLAYER_DEFAULT if PLAYER_DEFAULT else 'MISSING'}")
+    print(f" [NET] Target OS      : {conf.get('TARGET_OS', 'N/A').upper()}")
+    print(f" [NET] Device IP      : {conf.get('SHIELD_IP') or 'MISSING'}")
+    print(f" [CFG] Player Auto    : {conf.get('PLAYER_DEFAULT') or 'MISSING'}")
     print(f" [API] TMDB Key       : {masked_key}")
     print(f" [API] Trakt Token    : {masked_trakt}")
     print(f" [SEC] Skill ID Check : {skill_sec}")
