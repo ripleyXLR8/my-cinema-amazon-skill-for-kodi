@@ -1,6 +1,6 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.2.1
+# VERSION : 2.2.2
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
@@ -78,7 +78,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.2.1"
+APP_VERSION = "2.2.2"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
