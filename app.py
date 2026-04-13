@@ -1,16 +1,13 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.1.2
+# VERSION : 2.1.3
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
 # DESCRIPTION : 
 # Skill Alexa pour contrôle vocal de Kodi.
+# UPDATE v2.1.3 : Sécurisation du Webhook (Signature & Timestamp) + Fix FENLIGHT_LOCAL_TEMP.
 # UPDATE v2.1.2 : Fusion du Trakt Setup dans la page Settings.
-# UPDATE v2.1.1 : Fix NameError PATCH_CHECK_INTERVAL + Masquage warnings Paramiko.
-# UPDATE v2.1.0 : Configuration dynamique depuis l'UI Web.
-# UPDATE v2.0.0 : Ajout du Web UI Control Panel (Dashboard + Trakt Setup).
-# UPDATE v1.9.0 : Support LibreELEC / Raspberry Pi (SSH) + Android TV (ADB).
 # ==============================================================================
 
 from flask import Flask, request, jsonify, render_template, redirect, url_for, flash
@@ -24,8 +21,10 @@ import logging
 import json
 import signal
 import paramiko
-from wakeonlan import send_magic_packet
 import warnings
+from datetime import datetime
+from wakeonlan import send_magic_packet
+from ask_sdk_webservice_support.verifier import verify_signature
 
 # --- Masquage du CryptographyDeprecationWarning lié à Paramiko ---
 warnings.filterwarnings("ignore", message=".*TripleDES.*")
@@ -37,6 +36,9 @@ warnings.filterwarnings("ignore", message=".*TripleDES.*")
 DATA_DIR = "/app/data"
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR, exist_ok=True)
+
+# Correction Bug : Définition de la variable temporaire pour le patcher
+FENLIGHT_LOCAL_TEMP = os.path.join(DATA_DIR, "kodi_utils_temp.py")
 
 LOG_FILE = os.path.join(DATA_DIR, "app.log")
 TOKEN_FILE = os.path.join(DATA_DIR, "trakt_tokens.json")
@@ -57,12 +59,13 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.1.2"
+APP_VERSION = "2.1.3"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)
+# Note: En production, cette clé devrait être fixée via une variable d'environnement
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
 
 # ==========================================
 # 2. GESTION DE LA CONFIGURATION (Dynamique)
@@ -817,18 +820,55 @@ def change_source_worker(player_id, next_url):
     worker_process(next_url)
 
 # ==========================================
-# 8. ALEXA WEBHOOK ROUTE
+# 8. ALEXA WEBHOOK ROUTE (SÉCURISÉE)
 # ==========================================
 
 @app.route('/alexa-webhook', methods=['POST'])
 def alexa_handler():
-    req_data = request.get_json()
-    if not req_data or 'request' not in req_data: return jsonify({"error": "Invalid Request"}), 400
+    # ---------------------------------------------------------
+    # ÉTAPE 1 : VÉRIFICATION CRYPTOGRAPHIQUE (Signature)
+    # ---------------------------------------------------------
+    raw_body = request.get_data()
+    signature = request.headers.get('Signature')
+    cert_url = request.headers.get('SignatureCertChainUrl')
 
+    if not signature or not cert_url:
+        logger.warning("[SÉCURITÉ] Requête rejetée : Headers de signature Amazon manquants.")
+        return jsonify({"error": "Forbidden"}), 403
+
+    try:
+        verify_signature(
+            cert_url_header=cert_url, 
+            signature_header=signature, 
+            serialized_request_body=raw_body
+        )
+    except Exception as e:
+        logger.error(f"[SÉCURITÉ] Échec de la vérification de la signature : {e}")
+        return jsonify({"error": "Forbidden"}), 403
+
+    # ---------------------------------------------------------
+    # ÉTAPE 2 : PARSING JSON ET VÉRIFICATION DU TIMESTAMP (REJEU)
+    # ---------------------------------------------------------
+    req_data = request.get_json()
+    if not req_data or 'request' not in req_data: 
+        return jsonify({"error": "Invalid Request"}), 400
+
+    try:
+        req_timestamp_str = req_data['request']['timestamp']
+        req_date = datetime.strptime(req_timestamp_str, "%Y-%m-%dT%H:%M:%SZ")
+        if abs((datetime.utcnow() - req_date).total_seconds()) > 150:
+            logger.warning("[SÉCURITÉ] Requête rejetée : Timestamp expiré.")
+            return jsonify({"error": "Forbidden"}), 403
+    except Exception as e:
+        logger.error(f"[SÉCURITÉ] Erreur validation timestamp : {e}")
+        return jsonify({"error": "Forbidden"}), 403
+
+    # ---------------------------------------------------------
+    # ÉTAPE 3 : VÉRIFICATION DE L'APP ID
+    # ---------------------------------------------------------
     conf = get_app_config()
     skill_id = conf.get("ALEXA_SKILL_ID")
 
-    # --- SÉCURITÉ : Validation de l'ID de la Skill Alexa ---
     if skill_id:
         try:
             session_app_id = req_data.get('session', {}).get('application', {}).get('applicationId')
@@ -836,10 +876,10 @@ def alexa_handler():
             incoming_app_id = session_app_id or context_app_id
             
             if incoming_app_id != skill_id:
-                logger.warning(f"[SÉCURITÉ] ALERTE: Requête rejetée. Skill ID non reconnu ({incoming_app_id})")
+                logger.warning(f"[SÉCURITÉ] ALERTE: ID non reconnu ({incoming_app_id})")
                 return jsonify({"error": "Forbidden"}), 403
         except Exception as e:
-            logger.error(f"[SÉCURITÉ] Erreur lors de l'extraction de l'ID Alexa : {e}")
+            logger.error(f"[SÉCURITÉ] Erreur extraction ID Alexa : {e}")
             return jsonify({"error": "Forbidden"}), 403
 
     req_type = req_data['request']['type']
@@ -848,8 +888,7 @@ def alexa_handler():
     full_locale = req_data['request'].get('locale', 'fr-FR')
     lang = full_locale.split('-')[0]
     
-    logger.info(f"Requête reçue ({req_type}) - Langue détectée : {lang.upper()} ({full_locale})")
-    if DEBUG_MODE: logger.debug(json.dumps(req_data))
+    logger.info(f"Requête reçue ({req_type}) - Langue : {lang.upper()}")
 
     if req_type == "LaunchRequest":
         return jsonify(build_response(get_text("launch", lang), end_session=False))
@@ -869,44 +908,27 @@ def alexa_handler():
         elif intent_name == "ChangeSourceIntent":
             if not is_kodi_responsive():
                 return jsonify(build_response(get_text("kodi_offline", lang), end_session=True))
-            
             player_id = get_kodi_active_player()
             item = get_kodi_player_item(player_id) if player_id is not None else None
+            if not item: return jsonify(build_response(get_text("nothing_playing", lang)))
             
-            if not item:
-                return jsonify(build_response(get_text("nothing_playing", lang), end_session=True))
-            
-            media_type = item.get('type')
-            title = item.get('title')
-            year = item.get('year')
-            
+            media_type, title, year = item.get('type'), item.get('title'), item.get('year')
             new_url = None
-            response_msg = ""
-
             if media_type == 'movie':
-                tmdb_id, r_title, r_year = search_tmdb_movie(title, year=year, lang=lang)
-                if tmdb_id:
-                    new_url = get_playback_url(tmdb_id, "movie", force_select=True)
-                    response_msg = get_text("change_source_movie", lang, r_title)
-            
+                tmdb_id, _, _ = search_tmdb_movie(title, year=year, lang=lang)
+                if tmdb_id: new_url = get_playback_url(tmdb_id, "movie", force_select=True)
             elif media_type == 'episode':
-                show_title = item.get('showtitle')
-                season = item.get('season')
-                episode = item.get('episode')
-                tmdb_id, r_show_name = search_tmdb_show(show_title, lang=lang)
-                if tmdb_id:
-                    new_url = get_playback_url(tmdb_id, "episode", season, episode, force_select=True)
-                    response_msg = get_text("change_source_episode", lang, r_show_name, season, episode)
-
+                tmdb_id, _ = search_tmdb_show(item.get('showtitle'), lang=lang)
+                if tmdb_id: new_url = get_playback_url(tmdb_id, "episode", item.get('season'), item.get('episode'), force_select=True)
+            
             if new_url:
                 threading.Thread(target=change_source_worker, args=(player_id, new_url)).start()
-                return jsonify(build_response(response_msg))
-            else:
-                return jsonify(build_response(get_text("content_error", lang)))
+                return jsonify(build_response(get_text("change_source_movie", lang, title) if media_type == 'movie' else get_text("change_source_episode", lang, item.get('showtitle'), item.get('season'), item.get('episode'))))
+            return jsonify(build_response(get_text("content_error", lang)))
 
         elif intent_name == "ResumeTVShowIntent":
             query = slots.get('ShowName', {}).get('value')
-            if not query: return jsonify(build_response(get_text("ask_show", lang), end_session=False))
+            if not query: return jsonify(build_response(get_text("ask_show", lang), False))
             tmdb_id, title = search_tmdb_show(query, lang=lang)
             if not tmdb_id: return jsonify(build_response(get_text("show_not_found", lang, query)))
             s, e = get_trakt_next_episode(tmdb_id)
@@ -914,74 +936,47 @@ def alexa_handler():
                 url = get_playback_url(tmdb_id, "episode", s, e, force_select)
                 threading.Thread(target=worker_process, args=(url,)).start()
                 return jsonify(build_response(get_text("resume_show", lang, title, s, e, manual_msg)))
-            else:
-                return jsonify(build_response(get_text("no_progress", lang, title), end_session=False))
+            return jsonify(build_response(get_text("no_progress", lang, title), False))
 
         elif intent_name == "PlayMovieIntent":
             query = slots.get('MovieName', {}).get('value')
-            year_query = slots.get('MovieYear', {}).get('value')
-            if not query: return jsonify(build_response(get_text("ask_movie", lang), end_session=False))
-            movie_id, movie_title, movie_year = search_tmdb_movie(query, year=year_query, lang=lang)
+            movie_id, title, movie_year = search_tmdb_movie(query, year=slots.get('MovieYear', {}).get('value'), lang=lang)
             if movie_id:
                 url = get_playback_url(movie_id, "movie", force_select=force_select)
                 threading.Thread(target=worker_process, args=(url,)).start()
-                year_str = f" ({movie_year})" if lang == 'en' else f" de {movie_year}"
-                if not movie_year: year_str = ""
-                return jsonify(build_response(get_text("launch_movie", lang, movie_title, year_str, manual_msg)))
-            else:
-                return jsonify(build_response(get_text("movie_not_found", lang, query)))
+                return jsonify(build_response(get_text("launch_movie", lang, title, f" de {movie_year}" if movie_year else "", manual_msg)))
+            return jsonify(build_response(get_text("movie_not_found", lang, query)))
 
         elif intent_name == "PlayTVShowIntent":
             query = slots.get('ShowName', {}).get('value')
-            season = slots.get('Season', {}).get('value')
-            episode = slots.get('Episode', {}).get('value')
-            if not query and attributes.get('pending_show_id'):
-                tmdb_id, title = attributes['pending_show_id'], attributes['pending_show_name']
-            elif query:
-                tmdb_id, title = search_tmdb_show(query, lang=lang)
-            else:
-                return jsonify(build_response(get_text("ask_which_show", lang), end_session=False))
+            season, episode = slots.get('Season', {}).get('value'), slots.get('Episode', {}).get('value')
+            tmdb_id, title = search_tmdb_show(query, lang=lang) if query else (attributes.get('pending_show_id'), attributes.get('pending_show_name'))
             if not tmdb_id: return jsonify(build_response(get_text("show_not_found", lang, query)))
             if season and episode:
                 if check_episode_exists(tmdb_id, season, episode):
                     url = get_playback_url(tmdb_id, "episode", season, episode, force_select)
                     threading.Thread(target=worker_process, args=(url,)).start()
                     return jsonify(build_response(get_text("launch_show", lang, title, season, episode, manual_msg)))
-                else:
-                    return jsonify(build_response(get_text("episode_not_found", lang), end_session=False))
-            else:
-                trakt_s, trakt_e = get_trakt_next_episode(tmdb_id)
-                tmdb_last_s, tmdb_last_e = get_tmdb_last_aired(tmdb_id)
-                new_attr = {
-                    "pending_show_id": tmdb_id, "pending_show_name": title,
-                    "step": "ask_playback_method", "force_select": force_select,
-                    "trakt_next_s": trakt_s, "trakt_next_e": trakt_e,
-                    "tmdb_last_s": tmdb_last_s, "tmdb_last_e": tmdb_last_e
-                }
-                msg = get_text("ask_resume", lang, title, trakt_s, trakt_e) if trakt_s else get_text("ask_start", lang, title)
-                return jsonify(build_response(msg, end_session=False, attributes=new_attr))
+                return jsonify(build_response(get_text("episode_not_found", lang), False))
+            trakt_s, trakt_e = get_trakt_next_episode(tmdb_id)
+            last_s, last_e = get_tmdb_last_aired(tmdb_id)
+            new_attr = {"pending_show_id": tmdb_id, "pending_show_name": title, "step": "ask_playback_method", "force_select": force_select, "trakt_next_s": trakt_s, "trakt_next_e": trakt_e, "tmdb_last_s": last_s, "tmdb_last_e": last_e}
+            return jsonify(build_response(get_text("ask_resume", lang, title, trakt_s, trakt_e) if trakt_s else get_text("ask_start", lang, title), False, new_attr))
 
         elif intent_name in ["AMAZON.YesIntent", "ResumeIntent", "ReprendreIntent"]: 
-            if attributes.get('step') == 'ask_playback_method':
-                if attributes.get('trakt_next_s'):
-                    s, e = attributes['trakt_next_s'], attributes['trakt_next_e']
-                    title = attributes['pending_show_name']
-                    url = get_playback_url(attributes['pending_show_id'], "episode", s, e, force_select)
-                    threading.Thread(target=worker_process, args=(url,)).start()
-                    manual_txt = get_text("manual_select", lang) if force_select else ""
-                    return jsonify(build_response(get_text("resume_show", lang, title, s, e, manual_txt)))
-                else:
-                    return jsonify(build_response(get_text("no_history", lang), end_session=False))
-            else:
-                return jsonify(build_response(get_text("nothing_pending", lang)))
+            if attributes.get('step') == 'ask_playback_method' and attributes.get('trakt_next_s'):
+                s, e = attributes['trakt_next_s'], attributes['trakt_next_e']
+                url = get_playback_url(attributes['pending_show_id'], "episode", s, e, force_select)
+                threading.Thread(target=worker_process, args=(url,)).start()
+                return jsonify(build_response(get_text("resume_show", lang, attributes['pending_show_name'], s, e, get_text("manual_select", lang) if force_select else "")))
+            return jsonify(build_response(get_text("nothing_pending", lang)))
 
         elif intent_name == "LatestEpisodeIntent":
             if attributes.get('step') == 'ask_playback_method':
                 s, e = attributes['tmdb_last_s'], attributes['tmdb_last_e']
-                title = attributes.get('pending_show_name', 'show')
                 url = get_playback_url(attributes['pending_show_id'], "episode", s, e, force_select)
                 threading.Thread(target=worker_process, args=(url,)).start()
-                return jsonify(build_response(get_text("launch_last", lang, title)))
+                return jsonify(build_response(get_text("launch_last", lang, attributes['pending_show_name'])))
             return jsonify(build_response(get_text("unavailable", lang)))
 
         elif intent_name in ["AMAZON.NoIntent", "AMAZON.StopIntent", "AMAZON.CancelIntent"]:
@@ -996,7 +991,7 @@ def build_response(text, end_session=True, attributes={}):
 # 9. GESTION DE L'ARRÊT DU CONTENEUR
 # ==========================================
 def handle_sigterm(*args):
-    logger.info("Signal SIGTERM reçu d'Unraid/Docker. Fermeture de My Cinema...")
+    logger.info("Signal SIGTERM reçu. Fermeture de My Cinema...")
     sys.exit(0)
 
 signal.signal(signal.SIGTERM, handle_sigterm)
@@ -1004,35 +999,12 @@ signal.signal(signal.SIGTERM, handle_sigterm)
 # --- STARTUP ---
 def print_startup_banner():
     conf = get_app_config()
-    tmdb = conf.get("TMDB_API_KEY", "")
-    masked_key = f"{tmdb[:4]}...{tmdb[-4:]}" if tmdb else "MISSING"
-    
-    cfg = load_trakt_config()
-    masked_trakt = "Loaded" if cfg.get("access_token") else "MISSING"
-    skill_sec = "ACTIVE" if conf.get("ALEXA_SKILL_ID") else "DISABLED (WARNING)"
-
-    print("\n" + "="*50)
-    print(f" KODI ALEXA CONTROLLER")
-    print(f" Version : {APP_VERSION}")
-    print(f" Date    : {APP_DATE}")
-    print(f" Author  : {APP_AUTHOR}")
-    print(f" Debug   : {'ON' if DEBUG_MODE else 'OFF'}")
-    print("="*50)
-    print(f" [WEB] WebUI Dashboard: Active on Port 5000")
-    print(f" [NET] Target OS      : {conf.get('TARGET_OS', 'N/A').upper()}")
-    print(f" [NET] Device IP      : {conf.get('SHIELD_IP') or 'MISSING'}")
-    print(f" [CFG] Player Auto    : {conf.get('PLAYER_DEFAULT') or 'MISSING'}")
-    print(f" [API] TMDB Key       : {masked_key}")
-    print(f" [API] Trakt Token    : {masked_trakt}")
-    print(f" [SEC] Skill ID Check : {skill_sec}")
-    print(f" [SYS] Auto-Patcher   : ACTIVE (Interval: {PATCH_CHECK_INTERVAL}s)")
-    print("="*50 + "\n")
+    print("\n" + "="*50 + f"\n KODI ALEXA CONTROLLER\n Version : {APP_VERSION}\n Net     : {conf.get('TARGET_OS', 'N/A').upper()}\n Device  : {conf.get('SHIELD_IP') or 'MISSING'}\n Patcher : ACTIVE\n" + "="*50 + "\n")
     sys.stdout.flush()
 
 if __name__ == '__main__':
     print_startup_banner()
     verify_api_status()
     load_translations() 
-    patcher_thread = threading.Thread(target=patcher_scheduler, daemon=True)
-    patcher_thread.start()
+    threading.Thread(target=patcher_scheduler, daemon=True).start()
     app.run(host='0.0.0.0', port=5000)
