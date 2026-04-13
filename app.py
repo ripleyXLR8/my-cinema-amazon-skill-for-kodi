@@ -1,6 +1,6 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.0.8
+# VERSION : 2.0.9
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
@@ -24,32 +24,39 @@ import signal
 import paramiko
 from wakeonlan import send_magic_packet
 
+# ==========================================
+# 1. CONFIGURATION & VARIABLES (Fichiers & Logs)
+# ==========================================
+
+DATA_DIR = "/app/data"
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR, exist_ok=True)
+
+LOG_FILE = os.path.join(DATA_DIR, "app.log")
+TOKEN_FILE = os.path.join(DATA_DIR, "trakt_tokens.json")
+
+DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
+
 # --- CONFIGURATION LOGGING ---
+# Le logger écrit désormais dans la console ET dans le fichier app.log pour l'UI Web
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG if DEBUG_MODE else logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)
+    ]
 )
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.0.8"
+APP_VERSION = "2.0.9"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24) # Nécessaire pour sécuriser les sessions et messages Flash
-
-# ==========================================
-# 1. CONFIGURATION & VARIABLES
-# ==========================================
-
-DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
-if DEBUG_MODE:
-    logger.setLevel(logging.DEBUG)
-
-DATA_DIR = "/app/data"
-TOKEN_FILE = os.path.join(DATA_DIR, "trakt_tokens.json")
 
 # API KEYS & SECURITE (ENV)
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
@@ -92,8 +99,6 @@ else:
 # ==========================================
 
 def save_trakt_token_data(access_token, refresh_token, client_id=None, client_secret=None):
-    if not os.path.exists(DATA_DIR):
-        os.makedirs(DATA_DIR, exist_ok=True)
     data = {
         "access_token": access_token, 
         "refresh_token": refresh_token, 
@@ -340,6 +345,20 @@ def test_connection_route():
             flash(f"Erreur lors de la tentative de connexion SSH : {e}")
             
     return redirect(url_for('dashboard'))
+
+@app.route('/api/logs', methods=['GET'])
+def api_logs():
+    """Renvoie les 150 dernières lignes du fichier de log pour l'UI Web."""
+    try:
+        if not os.path.exists(LOG_FILE):
+            return jsonify({"logs": "Aucun log disponible pour le moment."})
+        with open(LOG_FILE, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            # On ne garde que les 150 dernières lignes pour éviter de surcharger la page
+            last_lines = lines[-150:]
+        return jsonify({"logs": "".join(last_lines)})
+    except Exception as e:
+        return jsonify({"logs": f"Erreur lors de la lecture des logs : {e}"})
 
 # ==========================================
 # 4. TRADUCTIONS & PATCHER
