@@ -1,11 +1,12 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.1.0
+# VERSION : 2.1.1
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
 # DESCRIPTION : 
 # Skill Alexa pour contrôle vocal de Kodi.
+# UPDATE v2.1.1 : Fix NameError PATCH_CHECK_INTERVAL + Masquage warnings Paramiko.
 # UPDATE v2.1.0 : Configuration dynamique depuis l'UI Web.
 # UPDATE v2.0.0 : Ajout du Web UI Control Panel (Dashboard + Trakt Setup).
 # UPDATE v1.9.0 : Support LibreELEC / Raspberry Pi (SSH) + Android TV (ADB).
@@ -23,6 +24,10 @@ import json
 import signal
 import paramiko
 from wakeonlan import send_magic_packet
+import warnings
+
+# --- Masquage du CryptographyDeprecationWarning lié à Paramiko ---
+warnings.filterwarnings("ignore", message=".*TripleDES.*")
 
 # ==========================================
 # 1. DOSSIERS & LOGGING
@@ -37,6 +42,7 @@ TOKEN_FILE = os.path.join(DATA_DIR, "trakt_tokens.json")
 APP_CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 
 DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
+PATCH_CHECK_INTERVAL = 3600  # Intervalle de vérification du patcher (en secondes)
 
 logging.basicConfig(
     level=logging.DEBUG if DEBUG_MODE else logging.INFO,
@@ -50,7 +56,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.1.1"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
