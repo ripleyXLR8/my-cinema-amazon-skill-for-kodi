@@ -159,12 +159,42 @@
         }
     }
 
-    // Rafraîchissement des logs toutes les 3 secondes
-    setInterval(fetchLogs, 3000);
-    fetchLogs();
+    // --- NOUVEAU : Gestion intelligente du polling (Page Visibility API) ---
+    
+    let logsInterval;
+    let statusInterval;
 
-    // Rafraîchissement des statuts toutes les 5 secondes
-    setInterval(fetchStatus, 5000);
-    fetchStatus();
+    function startPolling() {
+        // On s'assure de ne pas dupliquer les intervalles
+        stopPolling();
+        
+        // Exécution immédiate au focus
+        fetchLogs();
+        fetchStatus();
+
+        // Lancement des requêtes cycliques
+        logsInterval = setInterval(fetchLogs, 3000);
+        statusInterval = setInterval(fetchStatus, 5000);
+        
+        console.log("▶️ Polling activé");
+    }
+
+    function stopPolling() {
+        clearInterval(logsInterval);
+        clearInterval(statusInterval);
+        console.log("⏸️ Polling en pause (onglet inactif)");
+    }
+
+    // Écouteur d'événement sur la visibilité de l'onglet
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+            stopPolling(); // Coupe les requêtes si l'onglet n'est plus visible
+        } else {
+            startPolling(); // Relance les requêtes quand l'utilisateur revient
+        }
+    });
+
+    // Démarrage initial au chargement de la page
+    startPolling();
 </script>
 {% endblock %}
