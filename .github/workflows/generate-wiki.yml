@@ -1,0 +1,37 @@
+name: Generate Wiki via LLM
+
+on:
+  # Permet de lancer le script manuellement depuis l'onglet "Actions" de GitHub
+  workflow_dispatch: 
+
+jobs:
+  generate-wiki:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Indispensable pour que le script puisse faire un "git push"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9' # La même version que celle de ton projet
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-generativeai
+
+      - name: Configure Git
+        # Indispensable car ton script Python exécute la commande "git commit"
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run Wiki Generator Script
+        env:
+          # Le script récupère la clé API depuis les secrets GitHub
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python scripts/wiki_generator.py
