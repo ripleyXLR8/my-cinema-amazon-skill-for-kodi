@@ -1,6 +1,6 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.0.5
+# VERSION : 2.0.6
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
@@ -33,7 +33,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.0.5"
+APP_VERSION = "2.0.6"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
@@ -249,6 +249,41 @@ def start_kodi_route():
             flash(f"Erreur ADB lors du lancement : {e}")
     else:
         flash("Start Kodi est géré par l'OS sur LibreELEC.")
+    return redirect(url_for('dashboard'))
+
+@app.route('/test-connection', methods=['POST'])
+def test_connection_route():
+    logger.info("[WEB] Commande manuelle : Test Connection (ADB/SSH).")
+    if TARGET_OS == "android":
+        try:
+            subprocess.run(["adb", "connect", SHIELD_IP], capture_output=True, timeout=5)
+            # On exécute une commande shell basique pour valider la communication
+            res = subprocess.run(["adb", "shell", "echo", "ADB_OK"], capture_output=True, text=True, timeout=5)
+            if "ADB_OK" in res.stdout:
+                flash("Test de connexion ADB réussi ✅")
+            else:
+                flash(f"Échec de la connexion ADB ❌ : {res.stderr.strip() or 'Pas de réponse.'}")
+        except Exception as e:
+            logger.warning(f"[TEST] Erreur lors du test ADB : {e}")
+            flash(f"Erreur lors de la tentative de connexion ADB : {e}")
+            
+    elif TARGET_OS == "libreelec":
+        try:
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(SHIELD_IP, username=SSH_USER, password=SSH_PASS, timeout=5)
+            stdin, stdout, stderr = ssh.exec_command("echo SSH_OK")
+            out = stdout.read().decode('utf-8').strip()
+            ssh.close()
+            if out == "SSH_OK":
+                flash("Test de connexion SSH réussi ✅")
+            else:
+                err = stderr.read().decode('utf-8').strip()
+                flash(f"Échec de la connexion SSH ❌ : {err or 'Réponse inattendue.'}")
+        except Exception as e:
+            logger.warning(f"[TEST] Erreur lors du test SSH : {e}")
+            flash(f"Erreur lors de la tentative de connexion SSH : {e}")
+            
     return redirect(url_for('dashboard'))
 
 # ==========================================
