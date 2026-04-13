@@ -1,11 +1,12 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.1.4
+# VERSION : 2.1.5
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
 # DESCRIPTION : 
 # Skill Alexa pour contrôle vocal de Kodi.
+# UPDATE v2.1.5 : Ajout du statut du patcher et de la version sur le Dashboard.
 # UPDATE v2.1.4 : Correction de l'import RequestVerifier et fix des warnings Paramiko.
 # UPDATE v2.1.3 : Sécurisation du Webhook (Signature & Timestamp) + Fix FENLIGHT_LOCAL_TEMP.
 # ==============================================================================
@@ -31,6 +32,7 @@ import logging
 import json
 import signal
 import paramiko
+import re
 from datetime import datetime
 from wakeonlan import send_magic_packet
 
@@ -38,14 +40,14 @@ from wakeonlan import send_magic_packet
 from ask_sdk_webservice_support.verifier import RequestVerifier
 
 # ==========================================
-# 1. DOSSIERS & LOGGING
+# 1. DOSSIERS, LOGGING & ÉTAT DU PATCHER
 # ==========================================
 
 DATA_DIR = "/app/data"
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR, exist_ok=True)
 
-# Définition de la variable temporaire pour le patcher (Correction du bug précédent)
+# Définition de la variable temporaire pour le patcher
 FENLIGHT_LOCAL_TEMP = os.path.join(DATA_DIR, "kodi_utils_temp.py")
 
 LOG_FILE = os.path.join(DATA_DIR, "app.log")
@@ -54,6 +56,13 @@ APP_CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 
 DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
 PATCH_CHECK_INTERVAL = 3600  # Intervalle de vérification du patcher (en secondes)
+
+# --- État global du Patcher pour le Dashboard ---
+PATCH_STATE = {
+    "status": "Non vérifié",
+    "version": "Inconnue",
+    "last_check": "Jamais"
+}
 
 logging.basicConfig(
     level=logging.DEBUG if DEBUG_MODE else logging.INFO,
@@ -67,7 +76,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.1.4"
+APP_VERSION = "2.1.5"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
@@ -233,7 +242,8 @@ def dashboard():
         trakt_ok=bool(trakt_cfg.get("access_token")),
         p_def=conf.get('PLAYER_DEFAULT'),
         p_sel=conf.get('PLAYER_SELECT'),
-        skill_id=conf.get('ALEXA_SKILL_ID')
+        skill_id=conf.get('ALEXA_SKILL_ID'),
+        patch_state=PATCH_STATE
     )
 
 @app.route('/settings', methods=['GET', 'POST'])
@@ -436,6 +446,13 @@ def test_connection_route():
             
     return redirect(url_for('dashboard'))
 
+@app.route('/trigger-patch', methods=['POST'])
+def trigger_patch_route():
+    logger.info("[WEB] Commande manuelle : Trigger Patcher.")
+    threading.Thread(target=check_and_patch_fenlight).start()
+    flash("Processus de patch lancé en arrière-plan. Actualisez dans quelques instants.")
+    return redirect(url_for('dashboard'))
+
 @app.route('/api/logs', methods=['GET'])
 def api_logs():
     try:
@@ -475,15 +492,22 @@ def get_text(key, lang="fr", *args):
     return text_template
 
 def check_and_patch_fenlight():
+    global PATCH_STATE
     conf = get_app_config()
     SHIELD_IP = conf.get("SHIELD_IP")
     TARGET_OS = conf.get("TARGET_OS")
-    if not SHIELD_IP: return
+    
+    if not SHIELD_IP: 
+        PATCH_STATE["status"] = "IP Manquante"
+        return
+        
     if DEBUG_MODE: logger.info(f"[PATCHER] Vérification intégrité Fen Light (OS: {TARGET_OS})...")
     
     content = ""
     ssh = None
     sftp = None
+    
+    PATCH_STATE["last_check"] = datetime.now().strftime("%H:%M:%S")
     
     try:
         if TARGET_OS == "android":
@@ -491,8 +515,19 @@ def check_and_patch_fenlight():
             subprocess.run(["adb", "connect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
             if os.path.exists(FENLIGHT_LOCAL_TEMP): os.remove(FENLIGHT_LOCAL_TEMP)
             
+            # --- RÉCUPÉRATION DE LA VERSION ---
+            ADDON_XML_TEMP = os.path.join(DATA_DIR, "addon_temp.xml")
+            res_xml = subprocess.run(["adb", "pull", "/sdcard/Android/data/org.xbmc.kodi/files/.kodi/addons/plugin.video.fenlight/addon.xml", ADDON_XML_TEMP], capture_output=True, timeout=10)
+            if res_xml.returncode == 0:
+                with open(ADDON_XML_TEMP, 'r', encoding='utf-8') as f:
+                    match = re.search(r'<addon[^>]*id="plugin\.video\.fenlight"[^>]*version="([^"]+)"', f.read())
+                    if match: PATCH_STATE["version"] = match.group(1)
+
+            # --- RÉCUPÉRATION DE KODI_UTILS.PY ---
             res = subprocess.run(["adb", "pull", "/sdcard/Android/data/org.xbmc.kodi/files/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py", FENLIGHT_LOCAL_TEMP], capture_output=True, timeout=10)
-            if res.returncode != 0: return 
+            if res.returncode != 0: 
+                PATCH_STATE["status"] = "Fichier introuvable"
+                return 
             
             with open(FENLIGHT_LOCAL_TEMP, 'r', encoding='utf-8') as f: 
                 content = f.read()
@@ -503,10 +538,21 @@ def check_and_patch_fenlight():
             ssh.connect(SHIELD_IP, username=conf.get("SSH_USER"), password=conf.get("SSH_PASS"), timeout=5)
             sftp = ssh.open_sftp()
             
+            # --- RÉCUPÉRATION DE LA VERSION ---
+            try:
+                with sftp.file("/storage/.kodi/addons/plugin.video.fenlight/addon.xml", 'r') as f:
+                    match = re.search(r'<addon[^>]*id="plugin\.video\.fenlight"[^>]*version="([^"]+)"', f.read().decode('utf-8'))
+                    if match: PATCH_STATE["version"] = match.group(1)
+            except Exception:
+                pass
+
+            # --- RÉCUPÉRATION DE KODI_UTILS.PY ---
             with sftp.file("/storage/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py", 'r') as f:
                 content = f.read().decode('utf-8')
+                
     except Exception as e:
         if DEBUG_MODE: logger.error(f"[PATCHER] Erreur de connexion/lecture ({TARGET_OS}): {e}")
+        PATCH_STATE["status"] = "Erreur connexion"
         return
 
     TARGET_1_ORIG = "if mode == 'playback.%s' % playback_key():"
@@ -521,6 +567,7 @@ def check_and_patch_fenlight():
     
     if has_patch_1 and has_patch_2:
         if DEBUG_MODE: logger.info("[PATCHER] OK : Fichier déjà patché.")
+        PATCH_STATE["status"] = "Patché"
         if TARGET_OS == "libreelec" and sftp and ssh:
             sftp.close()
             ssh.close()
@@ -528,9 +575,11 @@ def check_and_patch_fenlight():
 
     if not has_orig_1 and not has_patch_1:
          logger.warning("[PATCHER] ALERTE : Code 'player_check' introuvable dans le fichier local !")
+         PATCH_STATE["status"] = "Erreur Code"
          return
     if not has_orig_2 and not has_patch_2:
          logger.warning("[PATCHER] ALERTE : Code 'external_playback_check' introuvable dans le fichier local !")
+         PATCH_STATE["status"] = "Erreur Code"
          return
 
     new_content = content
@@ -551,15 +600,19 @@ def check_and_patch_fenlight():
                 push_res = subprocess.run(["adb", "push", FENLIGHT_LOCAL_TEMP, "/sdcard/Android/data/org.xbmc.kodi/files/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py"], capture_output=True)
                 if push_res.returncode == 0: 
                     logger.info("[PATCHER] SUCCÈS : Patchs appliqués via ADB.")
+                    PATCH_STATE["status"] = "Patché"
                 else: 
                     logger.error("[PATCHER] ÉCHEC : Impossible d'écrire sur la Shield.")
+                    PATCH_STATE["status"] = "Erreur d'écriture"
                     
             elif TARGET_OS == "libreelec":
                 with sftp.file("/storage/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py", 'w') as f:
                     f.write(new_content)
                 logger.info("[PATCHER] SUCCÈS : Patchs appliqués via SSH.")
+                PATCH_STATE["status"] = "Patché"
         except Exception as e:
             logger.error(f"[PATCHER] Erreur lors de l'envoi du fichier patché ({TARGET_OS}): {e}")
+            PATCH_STATE["status"] = "Erreur d'envoi"
         finally:
             if TARGET_OS == "libreelec" and sftp and ssh:
                 sftp.close()
