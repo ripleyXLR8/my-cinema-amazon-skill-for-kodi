@@ -7,8 +7,14 @@
             
             <div class="flex items-center justify-between mb-4">
                 <div class="flex items-center space-x-3">
-                    <div id="device-status-dot" class="h-3 w-3 rounded-full {% if device_ok %}bg-green-500{% else %}bg-red-500{% endif %}"></div>
-                    <span class="text-sm font-medium text-slate-300">Device <span class="text-xs text-slate-500">({{ shield_ip }})</span></span>
+                    <div id="device-status-dot" class="h-3 w-3 rounded-full {% if not device_ok %}bg-red-500{% elif device_awake %}bg-green-500{% else %}bg-yellow-500{% endif %}"></div>
+                    <span class="text-sm font-medium text-slate-300">
+                        Device 
+                        <span class="text-xs text-slate-500">({{ shield_ip }})</span> 
+                        <span id="device-status-text" class="text-xs font-bold {% if not device_ok %}text-red-400{% elif device_awake %}text-green-400{% else %}text-yellow-400{% endif %} ml-1">
+                            {% if not device_ok %}OFFLINE{% elif device_awake %}ALLUMÉ{% else %}EN VEILLE{% endif %}
+                        </span>
+                    </span>
                 </div>
                 <div class="flex space-x-2">
                     <form action="/wake-device" method="POST" onsubmit="this.querySelector('button').innerText = '...'; this.querySelector('button').disabled = true;">
@@ -135,17 +141,28 @@
         }
     }
 
-    // NOUVEAU : Récupération du statut du Device et de Kodi via l'API
+    // Récupération du statut du Device et de Kodi via l'API avec gestion de l'état d'éveil
     async function fetchStatus() {
         try {
             const response = await fetch('/api/status');
             const data = await response.json();
             
             const deviceDot = document.getElementById('device-status-dot');
-            if (data.device_ok) {
-                deviceDot.className = 'h-3 w-3 rounded-full bg-green-500 transition-colors duration-300';
-            } else {
+            const deviceText = document.getElementById('device-status-text');
+            
+            // Logique à 3 états : Offline (Rouge) -> Sleep (Jaune) -> Awake (Vert)
+            if (!data.device_ok) {
                 deviceDot.className = 'h-3 w-3 rounded-full bg-red-500 transition-colors duration-300';
+                deviceText.className = 'text-xs font-bold text-red-400 ml-1 transition-colors duration-300';
+                deviceText.innerText = 'OFFLINE';
+            } else if (data.device_awake) {
+                deviceDot.className = 'h-3 w-3 rounded-full bg-green-500 transition-colors duration-300';
+                deviceText.className = 'text-xs font-bold text-green-400 ml-1 transition-colors duration-300';
+                deviceText.innerText = 'ALLUMÉ';
+            } else {
+                deviceDot.className = 'h-3 w-3 rounded-full bg-yellow-500 transition-colors duration-300';
+                deviceText.className = 'text-xs font-bold text-yellow-400 ml-1 transition-colors duration-300';
+                deviceText.innerText = 'EN VEILLE';
             }
 
             const kodiDot = document.getElementById('kodi-status-dot');
@@ -159,7 +176,7 @@
         }
     }
 
-    // --- NOUVEAU : Gestion intelligente du polling (Page Visibility API) ---
+    // Gestion intelligente du polling (Page Visibility API)
     
     let logsInterval;
     let statusInterval;

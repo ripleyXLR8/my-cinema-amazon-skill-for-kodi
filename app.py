@@ -1,6 +1,6 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.2.2
+# VERSION : 2.2.3
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
@@ -78,7 +78,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.2.2"
+APP_VERSION = "2.2.3"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
@@ -219,6 +219,7 @@ def refresh_trakt_token_online():
 def dashboard():
     conf = get_app_config()
     device_ok = is_device_online(conf.get('SHIELD_IP'))
+    device_awake = is_device_awake(conf.get('SHIELD_IP'), conf.get('TARGET_OS')) if device_ok else False
     kodi_ok = is_kodi_responsive()
     
     tmdb_ok = False
@@ -236,6 +237,7 @@ def dashboard():
         'dashboard.html', 
         version=APP_VERSION, 
         device_ok=device_ok,
+        device_awake=device_awake,
         kodi_ok=kodi_ok, 
         shield_ip=conf.get('SHIELD_IP') or "Non configuré", 
         target_os=conf.get('TARGET_OS'), 
@@ -471,11 +473,16 @@ def api_logs():
 def api_status():
     """Endpoint pour le rafraîchissement dynamique du Dashboard."""
     conf = get_app_config()
-    device_ok = is_device_online(conf.get('SHIELD_IP'))
+    ip = conf.get('SHIELD_IP')
+    target_os = conf.get('TARGET_OS')
+    
+    device_ok = is_device_online(ip)
+    device_awake = is_device_awake(ip, target_os) if device_ok else False
     kodi_ok = is_kodi_responsive()
     
     return jsonify({
         "device_ok": device_ok,
+        "device_awake": device_awake,
         "kodi_ok": kodi_ok
     })
 
@@ -648,6 +655,27 @@ def is_device_online(ip):
         return res.returncode == 0
     except Exception as e:
         if DEBUG_MODE: logger.debug(f"[PING] Erreur ping: {e}")
+        return False
+
+def is_device_awake(ip, target_os):
+    """
+    Vérifie si l'appareil Android est réellement allumé (Awake) via ADB.
+    """
+    if not ip or target_os != "android":
+        return True # Fallback pour LibreELEC qui gère l'alimentation différemment
+    
+    try:
+        # S'assurer qu'on est connecté via ADB
+        subprocess.run(["adb", "connect", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
+        
+        # Récupérer l'état d'alimentation
+        res = subprocess.run(["adb", "shell", "dumpsys", "power"], capture_output=True, text=True, timeout=3)
+        
+        if "mWakefulness=Awake" in res.stdout:
+            return True
+        return False
+    except Exception as e:
+        if DEBUG_MODE: logger.debug(f"[POWER] Erreur lors de la vérification de l'état d'éveil: {e}")
         return False
 
 def is_kodi_responsive():
