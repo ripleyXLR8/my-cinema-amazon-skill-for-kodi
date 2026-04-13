@@ -23,7 +23,7 @@
                         </button>
                     </form>
                     <form action="/shutdown-device" method="POST" onsubmit="if(!confirm('Voulez-vous vraiment mettre l\'appareil en veille ?')) return false; this.querySelector('button').innerText = '...'; this.querySelector('button').disabled = true;">
-                        <button type="submit" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed border border-slate-600">
+                        <button type="submit" class="bg-red-900/50 hover:bg-red-800 text-red-200 text-xs font-bold py-1.5 px-3 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed border border-red-800">
                             SLEEP
                         </button>
                     </form>
