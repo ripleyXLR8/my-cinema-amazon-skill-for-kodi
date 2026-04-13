@@ -4,8 +4,9 @@ on:
   push:
     branches:
       - main
+      - master
     paths:
-      - 'docs/**' # Se déclenche dès que le dossier docs est modifié
+      - 'docs/**'
 
 jobs:
   sync-wiki:
@@ -14,10 +15,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Upload to Wiki
+      - name: Sync docs folder to Wiki
         uses: Andrew-Chen-Wang/github-wiki-action@v4
         with:
           path: docs/
         env:
-          # Utilisez le même PAT_TOKEN que pour vos autres automatisations
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
