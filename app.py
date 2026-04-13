@@ -1,12 +1,12 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.2.6
+# VERSION : 2.3.0
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
 # DESCRIPTION : 
 # Skill Alexa pour contrôle vocal de Kodi.
-# UPDATE v2.2.3 : Ajout de l'état d'éveil ADB et route pour l'icône.
+# UPDATE v2.3.0 : Ajout recherche web, icône, et détection veille ADB.
 # UPDATE v2.2.1 : Fix de la vérification de signature Alexa derrière Gunicorn (Casse des headers HTTP).
 # UPDATE v2.1.6 : Ajout de la route API /api/status pour le rafraîchissement dynamique du dashboard.
 # UPDATE v2.1.5 : Ajout du statut du patcher et de la version sur le Dashboard.
@@ -79,7 +79,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.2.6"
+APP_VERSION = "2.3.0"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
@@ -311,6 +311,44 @@ def serve_icon():
 # ==========================================
 # ROUTES DIAGNOSTIC MANUEL (Dashboard)
 # ==========================================
+
+@app.route('/web-play', methods=['POST'])
+def web_play_route():
+    logger.info("[WEB] Commande manuelle : Web Play.")
+    query = request.form.get('query')
+    media_type = request.form.get('media_type')
+    force_select = request.form.get('force_select') == 'on'
+    
+    if not query:
+        flash("Veuillez entrer un titre à rechercher.")
+        return redirect(url_for('dashboard'))
+        
+    if media_type == 'movie':
+        tmdb_id, title, year = search_tmdb_movie(query)
+        if tmdb_id:
+            url = get_playback_url(tmdb_id, "movie", force_select=force_select)
+            threading.Thread(target=worker_process, args=(url,)).start()
+            flash(f"🎬 Lancement du film : {title}" + (" (Choix manuel)" if force_select else ""))
+        else:
+            flash(f"❌ Film introuvable : {query}")
+            
+    elif media_type == 'show':
+        tmdb_id, title = search_tmdb_show(query)
+        if tmdb_id:
+            s, e = get_trakt_next_episode(tmdb_id)
+            if s and e:
+                url = get_playback_url(tmdb_id, "episode", s, e, force_select=force_select)
+                threading.Thread(target=worker_process, args=(url,)).start()
+                flash(f"📺 Reprise de la série : {title} (Saison {s} Épisode {e})")
+            else:
+                # S'il n'y a pas d'historique Trakt, on lance le premier épisode par défaut
+                url = get_playback_url(tmdb_id, "episode", 1, 1, force_select=force_select)
+                threading.Thread(target=worker_process, args=(url,)).start()
+                flash(f"📺 Lancement de la série : {title} (Saison 1 Épisode 1)")
+        else:
+            flash(f"❌ Série introuvable : {query}")
+            
+    return redirect(url_for('dashboard'))
 
 @app.route('/wake-device', methods=['POST'])
 def wake_device_route():
