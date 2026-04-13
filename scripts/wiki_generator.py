@@ -2,6 +2,7 @@ import os
 import subprocess
 import time
 import google.generativeai as genai
+from google.api_core.exceptions import ResourceExhausted
 
 # --- Configuration ---
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -45,7 +46,7 @@ def get_full_code_context():
     return context
 
 def generate_page(model, context, filename, instructions):
-    """Demande au LLM de générer une page de wiki spécifique en se basant sur le code source."""
+    """Demande au LLM de générer une page de wiki avec gestion automatique des quotas (Retry)."""
     print(f"🤖 Analyse du code et génération de : {filename}...")
     
     prompt = f"""
@@ -64,19 +65,34 @@ def generate_page(model, context, filename, instructions):
     - Utilise un style professionnel et didactique.
     """
     
-    response = model.generate_content(prompt)
-    content = response.text.strip()
-    
-    # Nettoyage des balises markdown si le LLM les a incluses
-    for tag in ["```markdown", "```"]:
-        if content.startswith(tag): 
-            content = content[len(tag):]
-        if content.endswith("```"): 
-            content = content[:-3]
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = model.generate_content(prompt)
+            content = response.text.strip()
             
-    with open(os.path.join(DOCS_DIR, filename), "w", encoding="utf-8") as f:
-        f.write(content.strip())
-    print(f"✅ {filename} généré avec succès.")
+            # Nettoyage des balises markdown si le LLM les a incluses
+            for tag in ["```markdown", "```"]:
+                if content.startswith(tag): 
+                    content = content[len(tag):]
+                if content.endswith("```"): 
+                    content = content[:-3]
+                    
+            with open(os.path.join(DOCS_DIR, filename), "w", encoding="utf-8") as f:
+                f.write(content.strip())
+                
+            print(f"✅ {filename} généré avec succès.")
+            return  # Succès : on sort de la boucle de réessai
+            
+        except ResourceExhausted:
+            wait_time = 60
+            print(f"⚠️ Quota d'API gratuit atteint (Tentative {attempt + 1}/{max_retries}). Pause de {wait_time} secondes...")
+            time.sleep(wait_time)
+        except Exception as e:
+            print(f"❌ Erreur inattendue lors de la génération de {filename} : {e}")
+            break
+            
+    print(f"❌ Impossible de générer {filename} après plusieurs tentatives.")
 
 def git_sync():
     """Ajoute les fichiers générés à Git, commit et push vers le dépôt distant."""
@@ -98,17 +114,12 @@ def main():
     setup()
     context = get_full_code_context()
     
-    # Utilisation du modèle flash comme dans votre llm_updater.py existant
     model = genai.GenerativeModel('gemini-2.5-flash')
     
-    total_pages = len(WIKI_PAGES)
-    for i, (filename, instructions) in enumerate(WIKI_PAGES.items()):
+    for filename, instructions in WIKI_PAGES.items():
         generate_page(model, context, filename, instructions)
-        
-        # Ajout d'un délai pour ne pas dépasser la limite de 5 requêtes / minute de l'API gratuite
-        if i < total_pages - 1:
-            print("⏳ Pause de 15 secondes pour respecter le quota de l'API gratuite...")
-            time.sleep(15)
+        # On garde une petite pause préventive entre chaque page réussie
+        time.sleep(15)
     
     git_sync()
 
