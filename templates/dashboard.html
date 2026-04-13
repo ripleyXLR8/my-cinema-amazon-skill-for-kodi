@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    
     <div class="card p-6 rounded-xl flex flex-col justify-between">
         <div>
             <h2 class="text-slate-400 text-sm uppercase font-semibold mb-4">Système & Kodi Status</h2>
@@ -108,6 +109,28 @@
     </div>
 </div>
 
+<div class="mt-6 card p-6 rounded-xl border border-slate-700">
+    <h2 class="text-slate-400 text-sm uppercase font-semibold mb-4">Recherche & Lancement Rapide</h2>
+    <form action="/web-play" method="POST" class="flex flex-col md:flex-row gap-4 items-start md:items-center" onsubmit="this.querySelector('.btn-lancer').innerText = '...'; this.querySelector('.btn-lancer').disabled = true;">
+        <select name="media_type" class="bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none w-full md:w-48">
+            <option value="movie">🎬 Film</option>
+            <option value="show">📺 Série</option>
+        </select>
+        
+        <div class="flex-grow w-full">
+            <input type="text" name="query" placeholder="Ex: Inception, Breaking Bad..." required class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+            <label class="flex items-center space-x-2 text-sm text-slate-400 mt-2 cursor-pointer w-max">
+                <input type="checkbox" name="force_select" class="rounded bg-slate-900 border-slate-700 text-blue-500 focus:ring-2 focus:ring-blue-500">
+                <span>Forcer la sélection manuelle de la source</span>
+            </label>
+        </div>
+
+        <button type="submit" class="btn-lancer bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-lg transition shadow-lg shadow-blue-600/20 whitespace-nowrap w-full md:w-auto h-full self-stretch md:self-start">
+            LANCER
+        </button>
+    </form>
+</div>
+
 <div class="mt-6 card p-6 rounded-xl flex flex-col" style="height: 400px;">
     <h2 class="text-slate-400 text-sm uppercase font-semibold mb-4">System Logs</h2>
     <div id="logViewer" class="flex-grow bg-slate-900 border border-slate-700 rounded-lg p-4 font-mono text-xs text-slate-300 overflow-y-auto whitespace-pre-wrap break-all">Chargement des logs...</div>
@@ -119,7 +142,6 @@
 
     // Détection du scroll manuel pour éviter de forcer le défilement vers le bas
     logViewer.addEventListener('scroll', () => {
-        // Marge de 10 pixels pour s'assurer que si on est tout en bas, on reste "accroché"
         const isAtBottom = logViewer.scrollHeight - logViewer.scrollTop <= logViewer.clientHeight + 10;
         isUserScrolling = !isAtBottom;
     });
@@ -129,11 +151,9 @@
             const response = await fetch('/api/logs');
             const data = await response.json();
             
-            // Mettre à jour seulement si le texte a changé
             if (data.logs !== logViewer.innerText) {
                 logViewer.innerText = data.logs || "Aucun log disponible.";
                 
-                // Auto-scroll vers le bas si l'utilisateur ne lit pas plus haut
                 if (!isUserScrolling) {
                     logViewer.scrollTop = logViewer.scrollHeight;
                 }
@@ -143,7 +163,7 @@
         }
     }
 
-    // Récupération du statut du Device et de Kodi via l'API avec gestion de l'état d'éveil
+    // Récupération dynamique du statut
     async function fetchStatus() {
         try {
             const response = await fetch('/api/status');
@@ -178,42 +198,32 @@
         }
     }
 
-    // Gestion intelligente du polling (Page Visibility API)
-    
+    // Gestion intelligente du polling
     let logsInterval;
     let statusInterval;
 
     function startPolling() {
-        // On s'assure de ne pas dupliquer les intervalles
         stopPolling();
-        
-        // Exécution immédiate au focus
         fetchLogs();
         fetchStatus();
-
-        // Lancement des requêtes cycliques
         logsInterval = setInterval(fetchLogs, 3000);
         statusInterval = setInterval(fetchStatus, 5000);
-        
-        console.log("▶️ Polling activé");
     }
 
     function stopPolling() {
         clearInterval(logsInterval);
         clearInterval(statusInterval);
-        console.log("⏸️ Polling en pause (onglet inactif)");
     }
 
-    // Écouteur d'événement sur la visibilité de l'onglet
+    // Arrêt des requêtes si l'onglet n'est pas actif
     document.addEventListener("visibilitychange", () => {
         if (document.hidden) {
-            stopPolling(); // Coupe les requêtes si l'onglet n'est plus visible
+            stopPolling();
         } else {
-            startPolling(); // Relance les requêtes quand l'utilisateur revient
+            startPolling();
         }
     });
 
-    // Démarrage initial au chargement de la page
     startPolling();
 </script>
 {% endblock %}
