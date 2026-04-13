@@ -1,6 +1,6 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.3.0
+# VERSION : 2.3.1
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
@@ -79,7 +79,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.3.0"
+APP_VERSION = "2.3.1"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
@@ -318,6 +318,7 @@ def web_play_route():
     query = request.form.get('query')
     media_type = request.form.get('media_type')
     force_select = request.form.get('force_select') == 'on'
+    show_action = request.form.get('show_action', 'resume')
     
     if not query:
         flash("Veuillez entrer un titre à rechercher.")
@@ -335,16 +336,35 @@ def web_play_route():
     elif media_type == 'show':
         tmdb_id, title = search_tmdb_show(query)
         if tmdb_id:
-            s, e = get_trakt_next_episode(tmdb_id)
-            if s and e:
+            msg_suffix = " (Choix manuel)" if force_select else ""
+            
+            if show_action == 'specific':
+                s = request.form.get('season', type=int, default=1)
+                e = request.form.get('episode', type=int, default=1)
                 url = get_playback_url(tmdb_id, "episode", s, e, force_select=force_select)
                 threading.Thread(target=worker_process, args=(url,)).start()
-                flash(f"📺 Reprise de la série : {title} (Saison {s} Épisode {e})")
-            else:
-                # S'il n'y a pas d'historique Trakt, on lance le premier épisode par défaut
-                url = get_playback_url(tmdb_id, "episode", 1, 1, force_select=force_select)
-                threading.Thread(target=worker_process, args=(url,)).start()
-                flash(f"📺 Lancement de la série : {title} (Saison 1 Épisode 1)")
+                flash(f"📺 Lancement de la série : {title} (Saison {s} Épisode {e}){msg_suffix}")
+                
+            elif show_action == 'latest':
+                s, e = get_tmdb_last_aired(tmdb_id)
+                if s and e:
+                    url = get_playback_url(tmdb_id, "episode", s, e, force_select=force_select)
+                    threading.Thread(target=worker_process, args=(url,)).start()
+                    flash(f"📺 Lancement du dernier épisode de : {title} (Saison {s} Épisode {e}){msg_suffix}")
+                else:
+                    flash(f"❌ Impossible de trouver le dernier épisode diffusé pour : {title}")
+                    
+            else: # Action 'resume' (Défaut)
+                s, e = get_trakt_next_episode(tmdb_id)
+                if s and e:
+                    url = get_playback_url(tmdb_id, "episode", s, e, force_select=force_select)
+                    threading.Thread(target=worker_process, args=(url,)).start()
+                    flash(f"📺 Reprise de la série : {title} (Saison {s} Épisode {e}){msg_suffix}")
+                else:
+                    # S'il n'y a pas d'historique Trakt, on lance le premier épisode par défaut
+                    url = get_playback_url(tmdb_id, "episode", 1, 1, force_select=force_select)
+                    threading.Thread(target=worker_process, args=(url,)).start()
+                    flash(f"📺 Aucun historique Trakt. Lancement par défaut : {title} (Saison 1 Épisode 1){msg_suffix}")
         else:
             flash(f"❌ Série introuvable : {query}")
             
