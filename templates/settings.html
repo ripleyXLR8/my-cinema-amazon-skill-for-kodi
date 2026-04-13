@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <h2 class="text-2xl font-bold mb-2">Configuration de l'application</h2>
+    <p class="text-slate-400 mb-8 text-sm">Ces paramètres remplaceront les variables d'environnement Docker une fois sauvegardés.</p>
+    
+    <form method="POST" class="space-y-6">
+        
+        <div class="card p-6 rounded-xl border border-slate-700">
+            <h3 class="text-lg font-semibold text-blue-400 mb-4 border-b border-slate-700 pb-2">1. Appareil & Réseau</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">Target OS</label>
+                    <select name="TARGET_OS" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="android" {% if conf.TARGET_OS == 'android' %}selected{% endif %}>Android TV (Nvidia Shield, etc.)</option>
+                        <option value="libreelec" {% if conf.TARGET_OS == 'libreelec' %}selected{% endif %}>LibreELEC / OpenELEC (SSH)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">IP de l'appareil (Shield/Pi)</label>
+                    <input type="text" name="SHIELD_IP" value="{{ conf.SHIELD_IP }}" placeholder="ex: 192.168.1.50" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">Adresse MAC (Pour WoL Android)</label>
+                    <input type="text" name="SHIELD_MAC" value="{{ conf.SHIELD_MAC }}" placeholder="ex: AA:BB:CC:DD:EE:FF" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+            </div>
+            
+            <h4 class="text-sm font-semibold text-slate-400 mt-4 mb-2">Identifiants SSH (LibreELEC uniquement)</h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">SSH User</label>
+                    <input type="text" name="SSH_USER" value="{{ conf.SSH_USER }}" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">SSH Password</label>
+                    <input type="password" name="SSH_PASS" value="{{ conf.SSH_PASS }}" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+            </div>
+        </div>
+
+        <div class="card p-6 rounded-xl border border-slate-700">
+            <h3 class="text-lg font-semibold text-blue-400 mb-4 border-b border-slate-700 pb-2">2. Configuration Kodi</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">Port Web (JSON-RPC)</label>
+                    <input type="text" name="KODI_PORT" value="{{ conf.KODI_PORT }}" placeholder="ex: 8080" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">Utilisateur Web</label>
+                    <input type="text" name="KODI_USER" value="{{ conf.KODI_USER }}" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">Mot de passe Web</label>
+                    <input type="password" name="KODI_PASS" value="{{ conf.KODI_PASS }}" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+            </div>
+            
+            <h4 class="text-sm font-semibold text-slate-400 mt-4 mb-2">Lecteurs TMDB Helper</h4>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Fichier Player par Défaut</label>
+                    <input type="text" name="PLAYER_DEFAULT" value="{{ conf.PLAYER_DEFAULT }}" placeholder="ex: fenlight_auto.json" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-400 mb-1">Fichier Player avec Sélection</label>
+                    <input type="text" name="PLAYER_SELECT" value="{{ conf.PLAYER_SELECT }}" placeholder="ex: fenlight_select.json" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+            </div>
+        </div>
+
+        <div class="card p-6 rounded-xl border border-slate-700">
+            <h3 class="text-lg font-semibold text-blue-400 mb-4 border-b border-slate-700 pb-2">3. Clés API & Sécurité</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">Clé API TheMovieDB (TMDB)</label>
+                    <input type="password" name="TMDB_API_KEY" value="{{ conf.TMDB_API_KEY }}" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-300 mb-1">Alexa Skill ID (Optionnel, sécurise le webhook)</label>
+                    <input type="text" name="ALEXA_SKILL_ID" value="{{ conf.ALEXA_SKILL_ID }}" placeholder="ex: amzn1.ask.skill.xxxx-xxxx" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-lg transition text-lg mt-6 shadow-lg shadow-blue-600/20">SAUVEGARDER LA CONFIGURATION</button>
+    </form>
+</div>
+{% endblock %}
