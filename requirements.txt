@@ -2,3 +2,4 @@ flask
 requests
 wakeonlan
 paramiko==3.4.0
+ask-sdk-webservice-support==1.0.0
