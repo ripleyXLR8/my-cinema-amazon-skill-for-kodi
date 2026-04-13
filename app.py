@@ -1,6 +1,6 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.0.4
+# VERSION : 2.0.5
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
@@ -33,7 +33,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.0.4"
+APP_VERSION = "2.0.5"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
@@ -170,7 +170,9 @@ def refresh_trakt_token_online():
 
 @app.route('/')
 def dashboard():
+    device_ok = is_device_online(SHIELD_IP)
     kodi_ok = is_kodi_responsive()
+    
     tmdb_ok = False
     try:
         r = requests.get(f"https://api.themoviedb.org/3/movie/19995?api_key={TMDB_API_KEY}", timeout=3)
@@ -180,10 +182,10 @@ def dashboard():
     
     cfg = load_trakt_config()
     
-    # Utilisation de render_template pour appeler les fichiers dans le dossier templates/
     return render_template(
         'dashboard.html', 
         version=APP_VERSION, 
+        device_ok=device_ok,
         kodi_ok=kodi_ok, 
         shield_ip=SHIELD_IP, 
         target_os=TARGET_OS, 
@@ -220,14 +222,33 @@ def trakt_setup():
 def health_check():
     return jsonify({"status": "healthy", "version": APP_VERSION}), 200
 
-@app.route('/test-kodi-power', methods=['POST'])
-def test_kodi_power():
-    logger.info("[WEB] Test manuel de réveil Kodi demandé via UI.")
-    success = wake_and_start_kodi()
-    if success:
-        flash("Success : Kodi est allumé et répond correctement !")
+@app.route('/wake-device', methods=['POST'])
+def wake_device_route():
+    logger.info("[WEB] Commande manuelle : Wake Device.")
+    if SHIELD_MAC:
+        try: send_magic_packet(SHIELD_MAC)
+        except Exception as e: logger.warning(f"[POWER] Erreur WoL: {e}")
+    if TARGET_OS == "android":
+        try:
+            subprocess.run(["adb", "connect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+            subprocess.run(["adb", "shell", "input", "keyevent", "WAKEUP"], stdout=subprocess.DEVNULL, timeout=5)
+        except Exception as e: logger.warning(f"[POWER] Erreur ADB WAKEUP: {e}")
+    flash("Signal de réveil (WoL / ADB) envoyé à l'appareil.")
+    return redirect(url_for('dashboard'))
+
+@app.route('/start-kodi', methods=['POST'])
+def start_kodi_route():
+    logger.info("[WEB] Commande manuelle : Start Kodi.")
+    if TARGET_OS == "android":
+        try:
+            subprocess.run(["adb", "connect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+            subprocess.run(["adb", "shell", "am", "start", "-n", "org.xbmc.kodi/.Splash"], stdout=subprocess.DEVNULL, timeout=5)
+            flash("Commande de lancement de Kodi envoyée via ADB.")
+        except Exception as e:
+            logger.warning(f"[POWER] Erreur ADB START KODI: {e}")
+            flash(f"Erreur ADB lors du lancement : {e}")
     else:
-        flash("Erreur : Impossible de réveiller ou de joindre Kodi dans le temps imparti.")
+        flash("Start Kodi est géré par l'OS sur LibreELEC.")
     return redirect(url_for('dashboard'))
 
 # ==========================================
@@ -352,7 +373,20 @@ def patcher_scheduler():
 # ==========================================
 # 5. GESTION PUISSANCE
 # ==========================================
+
+def is_device_online(ip):
+    """Utilise un ping système pour vérifier si l'appareil est sur le réseau."""
+    if not ip: return False
+    try:
+        # -c 1 : 1 paquet | -W 1 : timeout de 1 seconde
+        res = subprocess.run(["ping", "-c", "1", "-W", "1", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return res.returncode == 0
+    except Exception as e:
+        if DEBUG_MODE: logger.debug(f"[PING] Erreur ping: {e}")
+        return False
+
 def is_kodi_responsive():
+    """Vérifie si le serveur JSON-RPC de Kodi répond."""
     if not KODI_BASE_URL: return False
     try:
         r = requests.get(KODI_BASE_URL, timeout=2)
@@ -362,6 +396,7 @@ def is_kodi_responsive():
     return False
 
 def wake_and_start_kodi():
+    """Méthode globale utilisée par les commandes Alexa."""
     if not SHIELD_IP or not SHIELD_MAC: return False
     if is_kodi_responsive(): return True
     
