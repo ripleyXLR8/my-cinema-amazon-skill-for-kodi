@@ -1,11 +1,12 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.2.0
+# VERSION : 2.2.1
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
 # DESCRIPTION : 
 # Skill Alexa pour contrôle vocal de Kodi.
+# UPDATE v2.2.1 : Fix de la vérification de signature Alexa derrière Gunicorn (Casse des headers HTTP).
 # UPDATE v2.1.6 : Ajout de la route API /api/status pour le rafraîchissement dynamique du dashboard.
 # UPDATE v2.1.5 : Ajout du statut du patcher et de la version sur le Dashboard.
 # UPDATE v2.1.4 : Correction de l'import RequestVerifier et fix des warnings Paramiko.
@@ -77,7 +78,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.2.1"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
@@ -901,7 +902,13 @@ def alexa_handler():
     # ÉTAPE 1 : VÉRIFICATION CRYPTOGRAPHIQUE (Signature)
     # ---------------------------------------------------------
     raw_body_str = request.get_data(as_text=True)
-    headers_dict = dict(request.headers)
+    
+    # FIX v2.2.1 : Gunicorn / Reverse Proxy (Nginx) modifie la casse des headers HTTP (ex: en minuscules).
+    # On extrait les headers en s'appuyant sur l'objet request.headers de Flask qui est insensible à la casse.
+    headers_dict = {
+        'Signature': request.headers.get('Signature', ''),
+        'SignatureCertChainUrl': request.headers.get('SignatureCertChainUrl', '')
+    }
 
     try:
         verifier = RequestVerifier()
