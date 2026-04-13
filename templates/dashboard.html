@@ -7,7 +7,7 @@
             
             <div class="flex items-center justify-between mb-4">
                 <div class="flex items-center space-x-3">
-                    <div class="h-3 w-3 rounded-full {% if device_ok %}bg-green-500{% else %}bg-red-500{% endif %}"></div>
+                    <div id="device-status-dot" class="h-3 w-3 rounded-full {% if device_ok %}bg-green-500{% else %}bg-red-500{% endif %}"></div>
                     <span class="text-sm font-medium text-slate-300">Device <span class="text-xs text-slate-500">({{ shield_ip }})</span></span>
                 </div>
                 <div class="flex space-x-2">
@@ -38,7 +38,7 @@
 
             <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-3">
-                    <div class="h-3 w-3 rounded-full {% if kodi_ok %}bg-green-500{% else %}bg-red-500{% endif %}"></div>
+                    <div id="kodi-status-dot" class="h-3 w-3 rounded-full {% if kodi_ok %}bg-green-500{% else %}bg-red-500{% endif %}"></div>
                     <span class="text-sm font-medium text-slate-300">Kodi App</span>
                 </div>
                 <div class="flex space-x-2">
@@ -135,8 +135,36 @@
         }
     }
 
-    // Rafraîchissement toutes les 3 secondes
+    // NOUVEAU : Récupération du statut du Device et de Kodi via l'API
+    async function fetchStatus() {
+        try {
+            const response = await fetch('/api/status');
+            const data = await response.json();
+            
+            const deviceDot = document.getElementById('device-status-dot');
+            if (data.device_ok) {
+                deviceDot.className = 'h-3 w-3 rounded-full bg-green-500 transition-colors duration-300';
+            } else {
+                deviceDot.className = 'h-3 w-3 rounded-full bg-red-500 transition-colors duration-300';
+            }
+
+            const kodiDot = document.getElementById('kodi-status-dot');
+            if (data.kodi_ok) {
+                kodiDot.className = 'h-3 w-3 rounded-full bg-green-500 transition-colors duration-300';
+            } else {
+                kodiDot.className = 'h-3 w-3 rounded-full bg-red-500 transition-colors duration-300';
+            }
+        } catch (e) {
+            console.error("Erreur de récupération des statuts", e);
+        }
+    }
+
+    // Rafraîchissement des logs toutes les 3 secondes
     setInterval(fetchLogs, 3000);
     fetchLogs();
+
+    // Rafraîchissement des statuts toutes les 5 secondes
+    setInterval(fetchStatus, 5000);
+    fetchStatus();
 </script>
 {% endblock %}
