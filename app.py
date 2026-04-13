@@ -1,6 +1,6 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.0.7
+# VERSION : 2.0.8
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
@@ -33,7 +33,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.0.7"
+APP_VERSION = "2.0.8"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
@@ -236,6 +236,30 @@ def wake_device_route():
     flash("Signal de réveil (WoL / ADB) envoyé à l'appareil.")
     return redirect(url_for('dashboard'))
 
+@app.route('/shutdown-device', methods=['POST'])
+def shutdown_device_route():
+    logger.info("[WEB] Commande manuelle : Shutdown Device.")
+    if TARGET_OS == "android":
+        try:
+            subprocess.run(["adb", "connect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+            subprocess.run(["adb", "shell", "reboot", "-p"], stdout=subprocess.DEVNULL, timeout=5)
+            flash("Commande d'extinction (veille profonde) envoyée à l'appareil Android.")
+        except Exception as e:
+            logger.error(f"[POWER] Erreur ADB SHUTDOWN: {e}")
+            flash(f"Erreur d'extinction ADB : {e}")
+    elif TARGET_OS == "libreelec":
+        try:
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            ssh.connect(SHIELD_IP, username=SSH_USER, password=SSH_PASS, timeout=5)
+            ssh.exec_command("poweroff")
+            ssh.close()
+            flash("Commande d'extinction envoyée via SSH (LibreELEC).")
+        except Exception as e:
+            logger.error(f"[POWER] Erreur SSH SHUTDOWN: {e}")
+            flash(f"Erreur d'extinction SSH : {e}")
+    return redirect(url_for('dashboard'))
+
 @app.route('/start-kodi', methods=['POST'])
 def start_kodi_route():
     logger.info("[WEB] Commande manuelle : Start Kodi.")
@@ -249,6 +273,37 @@ def start_kodi_route():
             flash(f"Erreur ADB lors du lancement : {e}")
     else:
         flash("Start Kodi est géré par l'OS sur LibreELEC.")
+    return redirect(url_for('dashboard'))
+
+@app.route('/stop-kodi', methods=['POST'])
+def stop_kodi_route():
+    logger.info("[WEB] Commande manuelle : Stop Kodi.")
+    quit_success = False
+    
+    # Tentative d'arrêt propre via l'API JSON-RPC de Kodi
+    if KODI_BASE_URL:
+        try:
+            payload = {"jsonrpc": "2.0", "method": "Application.Quit", "id": 1}
+            auth = (KODI_USER, KODI_PASS) if KODI_USER and KODI_PASS else None
+            r = requests.post(KODI_BASE_URL, json=payload, auth=auth, timeout=3)
+            if r.status_code == 200:
+                quit_success = True
+                flash("Kodi s'est arrêté proprement (JSON-RPC).")
+        except Exception as e:
+            logger.warning(f"[POWER] Erreur JSON-RPC Quit: {e}")
+
+    # Fallback pour Android : Forcer l'arrêt si l'API ne répond pas
+    if TARGET_OS == "android" and not quit_success:
+        try:
+            subprocess.run(["adb", "connect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+            subprocess.run(["adb", "shell", "am", "force-stop", "org.xbmc.kodi"], stdout=subprocess.DEVNULL, timeout=5)
+            flash("L'application Kodi a été fermée de force via ADB.")
+        except Exception as e:
+            logger.error(f"[POWER] Erreur ADB FORCE-STOP: {e}")
+            flash(f"Erreur lors de la fermeture de Kodi : {e}")
+    elif not quit_success:
+        flash("Impossible de fermer Kodi (il est injoignable et non-Android).")
+        
     return redirect(url_for('dashboard'))
 
 @app.route('/test-connection', methods=['POST'])
