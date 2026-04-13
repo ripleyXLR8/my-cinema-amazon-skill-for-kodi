@@ -1,6 +1,6 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.0.10
+# VERSION : 2.0.11
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
@@ -50,7 +50,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.0.10"
+APP_VERSION = "2.0.11"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
@@ -286,8 +286,8 @@ def stop_kodi_route():
     logger.info("[WEB] Commande manuelle : Stop Kodi.")
     quit_success = False
     
-    # Tentative d'arrêt propre via l'API JSON-RPC de Kodi
-    if KODI_BASE_URL:
+    # Vérifier si Kodi répond d'abord avant de tenter la fermeture douce via JSON-RPC
+    if is_kodi_responsive():
         try:
             payload = {"jsonrpc": "2.0", "method": "Application.Quit", "id": 1}
             auth = (KODI_USER, KODI_PASS) if KODI_USER and KODI_PASS else None
@@ -295,20 +295,24 @@ def stop_kodi_route():
             if r.status_code == 200:
                 quit_success = True
                 flash("Kodi s'est arrêté proprement (JSON-RPC).")
+        except requests.exceptions.RequestException:
+            logger.warning("[POWER] Impossible de joindre Kodi via JSON-RPC pour l'arrêt.")
         except Exception as e:
-            logger.warning(f"[POWER] Erreur JSON-RPC Quit: {e}")
+            logger.warning(f"[POWER] Erreur inattendue JSON-RPC Quit: {e}")
+    else:
+        logger.info("[POWER] Kodi ne répond pas au réseau, passage direct au fallback ADB.")
 
-    # Fallback pour Android : Forcer l'arrêt si l'API ne répond pas
+    # Fallback pour Android : Forcer l'arrêt si l'API ne répond pas ou si Kodi est déjà hors ligne
     if TARGET_OS == "android" and not quit_success:
         try:
             subprocess.run(["adb", "connect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
             subprocess.run(["adb", "shell", "am", "force-stop", "org.xbmc.kodi"], stdout=subprocess.DEVNULL, timeout=5)
-            flash("L'application Kodi a été fermée de force via ADB.")
+            flash("Commande d'arrêt envoyée via ADB.")
         except Exception as e:
             logger.error(f"[POWER] Erreur ADB FORCE-STOP: {e}")
             flash(f"Erreur lors de la fermeture de Kodi : {e}")
     elif not quit_success:
-        flash("Impossible de fermer Kodi (il est injoignable et non-Android).")
+        flash("Impossible de fermer Kodi de force (OS non-Android).")
         
     return redirect(url_for('dashboard'))
 
