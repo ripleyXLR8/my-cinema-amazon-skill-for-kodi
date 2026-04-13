@@ -114,7 +114,7 @@ def main():
     setup()
     context = get_full_code_context()
     
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    model = genai.GenerativeModel('gemini-3.1-flash-lite-preview')
     
     for filename, instructions in WIKI_PAGES.items():
         generate_page(model, context, filename, instructions)
