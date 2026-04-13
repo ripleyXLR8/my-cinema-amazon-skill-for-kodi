@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
     <div class="card p-6 rounded-xl flex flex-col justify-between">
         <div>
             <h2 class="text-slate-400 text-sm uppercase font-semibold mb-4">Système & Kodi Status</h2>
@@ -66,24 +66,26 @@
 
     <div class="card p-6 rounded-xl flex flex-col justify-between">
         <div>
-            <h2 class="text-slate-400 text-sm uppercase font-semibold mb-2">TMDB API</h2>
-            <div class="flex items-center space-x-3">
-                <div class="h-3 w-3 rounded-full {% if tmdb_ok %}bg-green-500{% else %}bg-red-500{% endif %}"></div>
-                <span class="text-xl font-medium">TheMovieDB</span>
+            <h2 class="text-slate-400 text-sm uppercase font-semibold mb-4">API Status</h2>
+            
+            <div class="flex items-center justify-between mb-6">
+                <div class="flex items-center space-x-3">
+                    <div class="h-3 w-3 rounded-full {% if tmdb_ok %}bg-green-500{% else %}bg-red-500{% endif %}"></div>
+                    <span class="text-sm font-medium text-slate-300">TheMovieDB</span>
+                </div>
+                <span class="text-xs text-slate-500 font-mono">Key: {{ tmdb_key_masked }}</span>
             </div>
-        </div>
-        <p class="text-slate-500 text-xs mt-4">Key: {{ tmdb_key_masked }}</p>
-    </div>
 
-    <div class="card p-6 rounded-xl flex flex-col justify-between">
-        <div>
-            <h2 class="text-slate-400 text-sm uppercase font-semibold mb-2">Trakt.tv Auth</h2>
-            <div class="flex items-center space-x-3">
-                <div class="h-3 w-3 rounded-full {% if trakt_ok %}bg-green-500{% else %}bg-red-500{% endif %}"></div>
-                <span class="text-xl font-medium">Account Sync</span>
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="h-3 w-3 rounded-full {% if trakt_ok %}bg-green-500{% else %}bg-red-500{% endif %}"></div>
+                    <span class="text-sm font-medium text-slate-300">Trakt.tv Auth</span>
+                </div>
+                <span class="text-xs font-bold {% if trakt_ok %}text-green-400{% else %}text-red-400{% endif %}">
+                    {% if trakt_ok %}ACTIVE{% else %}MISSING{% endif %}
+                </span>
             </div>
         </div>
-        <p class="text-slate-500 text-xs mt-4">Token: {% if trakt_ok %}Active{% else %}Missing{% endif %}</p>
     </div>
 
     <div class="card p-6 rounded-xl flex flex-col justify-between">
