@@ -7,6 +7,7 @@ on:
       - master
     paths:
       - 'docs/**'
+  workflow_dispatch: # Permet de lancer le workflow manuellement depuis l'onglet Actions
 
 jobs:
   sync-wiki:
