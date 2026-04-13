@@ -3,21 +3,35 @@
 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
     <div class="card p-6 rounded-xl flex flex-col justify-between">
         <div>
-            <h2 class="text-slate-400 text-sm uppercase font-semibold mb-2">Kodi Status</h2>
+            <h2 class="text-slate-400 text-sm uppercase font-semibold mb-4">Système & Kodi Status</h2>
+            
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center space-x-3">
+                    <div class="h-3 w-3 rounded-full {% if device_ok %}bg-green-500{% else %}bg-red-500{% endif %}"></div>
+                    <span class="text-sm font-medium text-slate-300">Device <span class="text-xs text-slate-500">({{ shield_ip }})</span></span>
+                </div>
+                <form action="/wake-device" method="POST" onsubmit="this.querySelector('button').innerText = '...'; this.querySelector('button').disabled = true;">
+                    <button type="submit" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed">
+                        WAKE DEVICE
+                    </button>
+                </form>
+            </div>
+
             <div class="flex items-center justify-between">
                 <div class="flex items-center space-x-3">
                     <div class="h-3 w-3 rounded-full {% if kodi_ok %}bg-green-500{% else %}bg-red-500{% endif %}"></div>
-                    <span class="text-xl font-medium">{{ shield_ip }}</span>
+                    <span class="text-sm font-medium text-slate-300">Kodi App</span>
                 </div>
-                <form action="/test-kodi-power" method="POST" onsubmit="this.querySelector('button').innerText = 'Waking...'; this.querySelector('button').disabled = true;">
-                    <button type="submit" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold py-2 px-3 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed">
-                        WAKE KODI
+                <form action="/start-kodi" method="POST" onsubmit="this.querySelector('button').innerText = '...'; this.querySelector('button').disabled = true;">
+                    <button type="submit" class="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed">
+                        START KODI
                     </button>
                 </form>
             </div>
         </div>
         <p class="text-slate-500 text-xs mt-4">Target OS: {{ target_os.upper() }}</p>
     </div>
+
     <div class="card p-6 rounded-xl flex flex-col justify-between">
         <div>
             <h2 class="text-slate-400 text-sm uppercase font-semibold mb-2">TMDB API</h2>
@@ -28,6 +42,7 @@
         </div>
         <p class="text-slate-500 text-xs mt-4">Key: {{ tmdb_key_masked }}</p>
     </div>
+
     <div class="card p-6 rounded-xl flex flex-col justify-between">
         <div>
             <h2 class="text-slate-400 text-sm uppercase font-semibold mb-2">Trakt.tv Auth</h2>
