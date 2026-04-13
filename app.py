@@ -1,6 +1,6 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.0.9
+# VERSION : 2.0.10
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
@@ -38,7 +38,6 @@ TOKEN_FILE = os.path.join(DATA_DIR, "trakt_tokens.json")
 DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
 
 # --- CONFIGURATION LOGGING ---
-# Le logger écrit désormais dans la console ET dans le fichier app.log pour l'UI Web
 logging.basicConfig(
     level=logging.DEBUG if DEBUG_MODE else logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
@@ -51,7 +50,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.0.9"
+APP_VERSION = "2.0.10"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
@@ -243,20 +242,22 @@ def wake_device_route():
 
 @app.route('/shutdown-device', methods=['POST'])
 def shutdown_device_route():
-    logger.info("[WEB] Commande manuelle : Shutdown Device.")
+    logger.info("[WEB] Commande manuelle : Shutdown/Sleep Device.")
     if TARGET_OS == "android":
         try:
             subprocess.run(["adb", "connect", SHIELD_IP], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
-            subprocess.run(["adb", "shell", "reboot", "-p"], stdout=subprocess.DEVNULL, timeout=5)
-            flash("Commande d'extinction (veille profonde) envoyée à l'appareil Android.")
+            # Remplacement de reboot -p par la mise en veille
+            subprocess.run(["adb", "shell", "input", "keyevent", "SLEEP"], stdout=subprocess.DEVNULL, timeout=5)
+            flash("Commande de mise en veille envoyée à l'appareil Android.")
         except Exception as e:
-            logger.error(f"[POWER] Erreur ADB SHUTDOWN: {e}")
-            flash(f"Erreur d'extinction ADB : {e}")
+            logger.error(f"[POWER] Erreur ADB SLEEP: {e}")
+            flash(f"Erreur de mise en veille ADB : {e}")
     elif TARGET_OS == "libreelec":
         try:
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             ssh.connect(SHIELD_IP, username=SSH_USER, password=SSH_PASS, timeout=5)
+            # LibreELEC n'a pas toujours de mode veille standard, on maintient poweroff
             ssh.exec_command("poweroff")
             ssh.close()
             flash("Commande d'extinction envoyée via SSH (LibreELEC).")
