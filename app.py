@@ -1,6 +1,6 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.1.6
+# VERSION : 2.2.0
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
@@ -77,7 +77,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.1.6"
+APP_VERSION = "2.2.0"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
@@ -1063,15 +1063,16 @@ def handle_sigterm(*args):
 
 signal.signal(signal.SIGTERM, handle_sigterm)
 
-# --- STARTUP ---
+# --- INITIALISATION (Gunicorn & Serveur Dev) ---
 def print_startup_banner():
     conf = get_app_config()
     print("\n" + "="*50 + f"\n KODI ALEXA CONTROLLER\n Version : {APP_VERSION}\n Net     : {conf.get('TARGET_OS', 'N/A').upper()}\n Device  : {conf.get('SHIELD_IP') or 'MISSING'}\n Patcher : ACTIVE\n" + "="*50 + "\n")
     sys.stdout.flush()
 
+print_startup_banner()
+verify_api_status()
+load_translations() 
+threading.Thread(target=patcher_scheduler, daemon=True).start()
+
 if __name__ == '__main__':
-    print_startup_banner()
-    verify_api_status()
-    load_translations() 
-    threading.Thread(target=patcher_scheduler, daemon=True).start()
     app.run(host='0.0.0.0', port=5000)
