@@ -1,5 +1,6 @@
 import os
 import subprocess
+import time
 import google.generativeai as genai
 
 # --- Configuration ---
@@ -28,7 +29,7 @@ WIKI_PAGES = {
 def setup():
     """Vérifie la clé API et crée le dossier de documentation si nécessaire."""
     if not GEMINI_API_KEY:
-        raise ValueError("GEMINI_API_KEY manquante. Veuillez l'exporter dans votre environnement.")
+        raise ValueError("GEMINI_API_KEY manquante. Veuillez l'exporter dans votre environnement ou vos secrets.")
     genai.configure(api_key=GEMINI_API_KEY)
     if not os.path.exists(DOCS_DIR):
         os.makedirs(DOCS_DIR)
@@ -100,8 +101,14 @@ def main():
     # Utilisation du modèle flash comme dans votre llm_updater.py existant
     model = genai.GenerativeModel('gemini-2.5-flash')
     
-    for filename, instructions in WIKI_PAGES.items():
+    total_pages = len(WIKI_PAGES)
+    for i, (filename, instructions) in enumerate(WIKI_PAGES.items()):
         generate_page(model, context, filename, instructions)
+        
+        # Ajout d'un délai pour ne pas dépasser la limite de 5 requêtes / minute de l'API gratuite
+        if i < total_pages - 1:
+            print("⏳ Pause de 15 secondes pour respecter le quota de l'API gratuite...")
+            time.sleep(15)
     
     git_sync()
 
