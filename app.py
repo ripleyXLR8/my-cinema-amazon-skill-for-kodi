@@ -1,11 +1,12 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.2.5
+# VERSION : 2.2.6
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
 # DESCRIPTION : 
 # Skill Alexa pour contrôle vocal de Kodi.
+# UPDATE v2.2.3 : Ajout de l'état d'éveil ADB et route pour l'icône.
 # UPDATE v2.2.1 : Fix de la vérification de signature Alexa derrière Gunicorn (Casse des headers HTTP).
 # UPDATE v2.1.6 : Ajout de la route API /api/status pour le rafraîchissement dynamique du dashboard.
 # UPDATE v2.1.5 : Ajout du statut du patcher et de la version sur le Dashboard.
@@ -23,7 +24,7 @@ try:
 except ImportError:
     pass
 
-from flask import Flask, request, jsonify, render_template, redirect, url_for, flash
+from flask import Flask, request, jsonify, render_template, redirect, url_for, flash, send_from_directory
 import requests
 import threading
 import time
@@ -78,7 +79,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.2.5"
+APP_VERSION = "2.2.6"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
@@ -302,6 +303,10 @@ def settings():
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({"status": "healthy", "version": APP_VERSION}), 200
+
+@app.route('/icon.png')
+def serve_icon():
+    return send_from_directory(os.path.dirname(__file__), 'icon.png')
 
 # ==========================================
 # ROUTES DIAGNOSTIC MANUEL (Dashboard)
