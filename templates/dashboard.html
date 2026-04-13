@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
     <div class="card p-6 rounded-xl flex flex-col justify-between">
         <div>
             <h2 class="text-slate-400 text-sm uppercase font-semibold mb-4">Système & Kodi Status</h2>
@@ -78,6 +78,25 @@
             </div>
         </div>
         <p class="text-slate-500 text-xs mt-4">Token: {% if trakt_ok %}Active{% else %}Missing{% endif %}</p>
+    </div>
+
+    <div class="card p-6 rounded-xl flex flex-col justify-between">
+        <div>
+            <h2 class="text-slate-400 text-sm uppercase font-semibold mb-2">Fen Light Patcher</h2>
+            <div class="flex items-center space-x-3 mb-4">
+                <div class="h-3 w-3 rounded-full {% if patch_state.status == 'Patché' %}bg-green-500{% elif patch_state.status == 'Non vérifié' %}bg-yellow-500{% else %}bg-red-500{% endif %}"></div>
+                <span class="text-sm font-medium text-slate-300">Statut: <span class="text-white">{{ patch_state.status }}</span></span>
+            </div>
+            <div class="flex justify-between items-center mb-2">
+                <p class="text-slate-500 text-xs">Version: <span class="text-slate-300 font-bold">{{ patch_state.version }}</span></p>
+                <p class="text-slate-500 text-xs">Check: <span class="text-slate-300">{{ patch_state.last_check }}</span></p>
+            </div>
+        </div>
+        <form action="/trigger-patch" method="POST" class="mt-2" onsubmit="this.querySelector('button').innerText = '...'; this.querySelector('button').disabled = true;">
+            <button type="submit" class="w-full bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold py-2 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed border border-slate-600">
+                LANCER LE PATCH
+            </button>
+        </form>
     </div>
 </div>
 
