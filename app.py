@@ -1,14 +1,24 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.1.3
+# VERSION : 2.1.4
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
 # DESCRIPTION : 
 # Skill Alexa pour contrôle vocal de Kodi.
+# UPDATE v2.1.4 : Correction de l'import RequestVerifier et fix des warnings Paramiko.
 # UPDATE v2.1.3 : Sécurisation du Webhook (Signature & Timestamp) + Fix FENLIGHT_LOCAL_TEMP.
-# UPDATE v2.1.2 : Fusion du Trakt Setup dans la page Settings.
 # ==============================================================================
+
+import warnings
+
+# --- Masquage global des avertissements obsolètes liés à Paramiko/Cryptography ---
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+try:
+    from cryptography.utils import CryptographyDeprecationWarning
+    warnings.filterwarnings("ignore", category=CryptographyDeprecationWarning)
+except ImportError:
+    pass
 
 from flask import Flask, request, jsonify, render_template, redirect, url_for, flash
 import requests
@@ -21,13 +31,11 @@ import logging
 import json
 import signal
 import paramiko
-import warnings
 from datetime import datetime
 from wakeonlan import send_magic_packet
-from ask_sdk_webservice_support.verifier import verify_signature
 
-# --- Masquage du CryptographyDeprecationWarning lié à Paramiko ---
-warnings.filterwarnings("ignore", message=".*TripleDES.*")
+# --- Import de la validation Alexa ---
+from ask_sdk_webservice_support.verifier import RequestVerifier
 
 # ==========================================
 # 1. DOSSIERS & LOGGING
@@ -37,7 +45,7 @@ DATA_DIR = "/app/data"
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR, exist_ok=True)
 
-# Correction Bug : Définition de la variable temporaire pour le patcher
+# Définition de la variable temporaire pour le patcher (Correction du bug précédent)
 FENLIGHT_LOCAL_TEMP = os.path.join(DATA_DIR, "kodi_utils_temp.py")
 
 LOG_FILE = os.path.join(DATA_DIR, "app.log")
@@ -59,12 +67,12 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.1.3"
+APP_VERSION = "2.1.4"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
 app = Flask(__name__)
-# Note: En production, cette clé devrait être fixée via une variable d'environnement
+# Note: En production, cette clé devrait idéalement être fixée via une variable d'environnement
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
 
 # ==========================================
@@ -236,7 +244,6 @@ def settings():
     if request.method == 'POST':
         action = request.form.get("action")
         
-        # 1. Sauvegarde de la configuration générale
         if action == "save_config":
             new_conf = {
                 "TMDB_API_KEY": request.form.get("TMDB_API_KEY", "").strip(),
@@ -258,7 +265,6 @@ def settings():
                 flash("Erreur lors de la sauvegarde de la configuration.", "error")
             return redirect(url_for('settings'))
             
-        # 2. Sauvegarde et génération du Token Trakt
         elif action == "save_trakt":
             c_id = request.form.get('client_id')
             c_secret = request.form.get('client_secret')
@@ -828,20 +834,15 @@ def alexa_handler():
     # ---------------------------------------------------------
     # ÉTAPE 1 : VÉRIFICATION CRYPTOGRAPHIQUE (Signature)
     # ---------------------------------------------------------
-    raw_body = request.get_data()
-    signature = request.headers.get('Signature')
-    cert_url = request.headers.get('SignatureCertChainUrl')
-
-    if not signature or not cert_url:
-        logger.warning("[SÉCURITÉ] Requête rejetée : Headers de signature Amazon manquants.")
-        return jsonify({"error": "Forbidden"}), 403
+    # On récupère le body en tant que "string" car RequestVerifier s'attend
+    # formellement à une chaine de texte (qu'il va lui même encoder pour le hash)
+    raw_body_str = request.get_data(as_text=True)
+    headers_dict = dict(request.headers)
 
     try:
-        verify_signature(
-            cert_url_header=cert_url, 
-            signature_header=signature, 
-            serialized_request_body=raw_body
-        )
+        verifier = RequestVerifier()
+        # On passe None comme 3ème paramètre, car RequestVerifier ne s'en sert pas
+        verifier.verify(headers_dict, raw_body_str, None)
     except Exception as e:
         logger.error(f"[SÉCURITÉ] Échec de la vérification de la signature : {e}")
         return jsonify({"error": "Forbidden"}), 403
@@ -882,6 +883,9 @@ def alexa_handler():
             logger.error(f"[SÉCURITÉ] Erreur extraction ID Alexa : {e}")
             return jsonify({"error": "Forbidden"}), 403
 
+    # ---------------------------------------------------------
+    # SUITE DU TRAITEMENT DES INTENTS
+    # ---------------------------------------------------------
     req_type = req_data['request']['type']
     session = req_data.get('session', {})
     attributes = session.get('attributes', {})
