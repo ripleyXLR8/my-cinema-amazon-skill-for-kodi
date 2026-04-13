@@ -1,6 +1,6 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.0.3
+# VERSION : 2.0.4
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
@@ -33,7 +33,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.0.3"
+APP_VERSION = "2.0.4"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
@@ -219,6 +219,16 @@ def trakt_setup():
 @app.route('/health', methods=['GET'])
 def health_check():
     return jsonify({"status": "healthy", "version": APP_VERSION}), 200
+
+@app.route('/test-kodi-power', methods=['POST'])
+def test_kodi_power():
+    logger.info("[WEB] Test manuel de réveil Kodi demandé via UI.")
+    success = wake_and_start_kodi()
+    if success:
+        flash("Success : Kodi est allumé et répond correctement !")
+    else:
+        flash("Erreur : Impossible de réveiller ou de joindre Kodi dans le temps imparti.")
+    return redirect(url_for('dashboard'))
 
 # ==========================================
 # 4. TRADUCTIONS & PATCHER
