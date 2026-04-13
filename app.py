@@ -1,11 +1,12 @@
 # ==============================================================================
 # FICHIER : app.py
-# VERSION : 2.1.5
+# VERSION : 2.1.6
 # DATE    : 2026-04-13
 # AUTEUR  : Richard Perez (richard@perez-mail.fr)
 #
 # DESCRIPTION : 
 # Skill Alexa pour contrôle vocal de Kodi.
+# UPDATE v2.1.6 : Ajout de la route API /api/status pour le rafraîchissement dynamique du dashboard.
 # UPDATE v2.1.5 : Ajout du statut du patcher et de la version sur le Dashboard.
 # UPDATE v2.1.4 : Correction de l'import RequestVerifier et fix des warnings Paramiko.
 # UPDATE v2.1.3 : Sécurisation du Webhook (Signature & Timestamp) + Fix FENLIGHT_LOCAL_TEMP.
@@ -76,7 +77,7 @@ logging.basicConfig(
 logger = logging.getLogger("KodiMiddleware")
 
 # --- METADATA ---
-APP_VERSION = "2.1.5"
+APP_VERSION = "2.1.6"
 APP_DATE = "2026-04-13"
 APP_AUTHOR = "Richard Perez"
 
@@ -464,6 +465,18 @@ def api_logs():
         return jsonify({"logs": "".join(last_lines)})
     except Exception as e:
         return jsonify({"logs": f"Erreur lors de la lecture des logs : {e}"})
+
+@app.route('/api/status', methods=['GET'])
+def api_status():
+    """Endpoint pour le rafraîchissement dynamique du Dashboard."""
+    conf = get_app_config()
+    device_ok = is_device_online(conf.get('SHIELD_IP'))
+    kodi_ok = is_kodi_responsive()
+    
+    return jsonify({
+        "device_ok": device_ok,
+        "kodi_ok": kodi_ok
+    })
 
 # ==========================================
 # 5. TRADUCTIONS & PATCHER
@@ -887,14 +900,11 @@ def alexa_handler():
     # ---------------------------------------------------------
     # ÉTAPE 1 : VÉRIFICATION CRYPTOGRAPHIQUE (Signature)
     # ---------------------------------------------------------
-    # On récupère le body en tant que "string" car RequestVerifier s'attend
-    # formellement à une chaine de texte (qu'il va lui même encoder pour le hash)
     raw_body_str = request.get_data(as_text=True)
     headers_dict = dict(request.headers)
 
     try:
         verifier = RequestVerifier()
-        # On passe None comme 3ème paramètre, car RequestVerifier ne s'en sert pas
         verifier.verify(headers_dict, raw_body_str, None)
     except Exception as e:
         logger.error(f"[SÉCURITÉ] Échec de la vérification de la signature : {e}")
