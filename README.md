@@ -35,7 +35,9 @@ https://github.com/user-attachments/assets/da996a8d-55bf-4b13-b84a-542da01ceb5d
 
 ## 📱 Platform Comparison
 
-**This container has initialy been developped to control Kodi and Fenlight AM running on the NVidia Shield platform but it can be used to control in conjunction with LibreElec / OpenElec running on a Raspberry Pi.** Here is a quick comparison of the features available on the different platform.**
+**This container has initialy been developped to control Kodi and Fenlight AM running on the NVidia Shield platform but it can be used to control in conjunction with LibreElec / OpenElec running on a Raspberry Pi.**
+
+Here is a quick comparison of the features available on the different platform :
 
 | Feature | Android TV (Nvidia Shield) | LibreELEC / OpenELEC |
 | :--- | :--- | :--- |
