@@ -12,6 +12,24 @@ from ask_sdk_webservice_support.verifier import RequestVerifier
 
 api_bp = Blueprint('api', __name__)
 
+@api_bp.before_request
+def require_api_auth():
+    # L'endpoint webhook d'Alexa a sa propre authentification par signature
+    if request.endpoint == 'api.alexa_handler':
+        return
+        
+    conf = get_app_config()
+    expected_user = conf.get("WEB_UI_USERNAME", "admin")
+    expected_pass = conf.get("WEB_UI_PASSWORD", "admin")
+    
+    if expected_pass:
+        auth = request.authorization
+        if not auth or auth.username != expected_user or auth.password != expected_pass:
+            return Response(
+                'Accès non autorisé.', 401,
+                {'WWW-Authenticate': 'Basic realm="MyCinema API"'}
+            )
+
 def build_res(text: str, end_session: bool = True, attributes: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     if attributes is None: 
         attributes = {}
