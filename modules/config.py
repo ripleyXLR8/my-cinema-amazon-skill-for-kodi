@@ -5,15 +5,16 @@ import logging
 import sys
 import time
 import requests
+from typing import Dict, Any, Optional
 
-DATA_DIR = "/app/data"
+DATA_DIR: str = "/app/data"
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR, exist_ok=True)
 
-LOG_FILE = os.path.join(DATA_DIR, "app.log")
-TOKEN_FILE = os.path.join(DATA_DIR, "trakt_tokens.json")
-APP_CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
-DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
+LOG_FILE: str = os.path.join(DATA_DIR, "app.log")
+TOKEN_FILE: str = os.path.join(DATA_DIR, "trakt_tokens.json")
+APP_CONFIG_FILE: str = os.path.join(DATA_DIR, "config.json")
+DEBUG_MODE: bool = os.getenv("DEBUG_MODE", "false").lower() == "true"
 
 logging.basicConfig(
     level=logging.DEBUG if DEBUG_MODE else logging.INFO,
@@ -24,11 +25,11 @@ logging.basicConfig(
         logging.StreamHandler(sys.stdout)
     ]
 )
-logger = logging.getLogger("KodiMiddleware")
+logger: logging.Logger = logging.getLogger("KodiMiddleware")
 
-TRANSLATIONS = {}
+TRANSLATIONS: Dict[str, Any] = {}
 
-def load_translations():
+def load_translations() -> None:
     global TRANSLATIONS
     try:
         json_path = os.path.join(os.path.dirname(__file__), '..', 'translations.json')
@@ -37,7 +38,7 @@ def load_translations():
     except Exception as e:
         logger.error(f"Erreur chargement traductions : {e}")
 
-def get_text(key, lang="fr", *args):
+def get_text(key: str, lang: str = "fr", *args: Any) -> str:
     target_lang = lang if lang in TRANSLATIONS else "fr"
     text_template = TRANSLATIONS.get(target_lang, {}).get(key, "")
     if args and text_template:
@@ -45,8 +46,8 @@ def get_text(key, lang="fr", *args):
         except: return text_template
     return text_template
 
-def get_app_config():
-    config = {
+def get_app_config() -> Dict[str, str]:
+    config: Dict[str, str] = {
         "TMDB_API_KEY": os.getenv("TMDB_API_KEY", ""),
         "ALEXA_SKILL_ID": os.getenv("ALEXA_SKILL_ID", ""),
         "TARGET_OS": os.getenv("TARGET_OS", "android").lower(),
@@ -69,7 +70,7 @@ def get_app_config():
             logger.error(f"Erreur lecture config.json : {e}")
     return config
 
-def save_app_config(new_config):
+def save_app_config(new_config: Dict[str, str]) -> bool:
     try:
         with open(APP_CONFIG_FILE, 'w', encoding='utf-8') as f:
             json.dump(new_config, f, indent=4)
@@ -78,8 +79,8 @@ def save_app_config(new_config):
         logger.error(f"Erreur sauvegarde config.json : {e}")
         return False
 
-def load_trakt_config():
-    config = {
+def load_trakt_config() -> Dict[str, str]:
+    config: Dict[str, str] = {
         "access_token": os.getenv("TRAKT_ACCESS_TOKEN", ""),
         "refresh_token": os.getenv("TRAKT_REFRESH_TOKEN", ""),
         "client_id": os.getenv("TRAKT_CLIENT_ID", ""),
@@ -94,11 +95,11 @@ def load_trakt_config():
             logger.error(f"Erreur lecture token : {e}")
     return config
 
-def load_trakt_token():
+def load_trakt_token() -> Optional[str]:
     return load_trakt_config()["access_token"] or None
 
-def save_trakt_token_data(access_token, refresh_token, client_id=None, client_secret=None):
-    data = {"access_token": access_token, "refresh_token": refresh_token, "updated_at": time.time()}
+def save_trakt_token_data(access_token: str, refresh_token: str, client_id: Optional[str] = None, client_secret: Optional[str] = None) -> bool:
+    data: Dict[str, Any] = {"access_token": access_token, "refresh_token": refresh_token, "updated_at": time.time()}
     if client_id: data["client_id"] = client_id
     if client_secret: data["client_secret"] = client_secret
     try:
@@ -108,7 +109,7 @@ def save_trakt_token_data(access_token, refresh_token, client_id=None, client_se
         logger.error(f"Erreur sauvegarde tokens : {e}")
         return False
 
-def refresh_trakt_token_online():
+def refresh_trakt_token_online() -> Optional[str]:
     cfg = load_trakt_config()
     if not all([cfg["refresh_token"], cfg["client_secret"], cfg["client_id"]]): return None
     try:
@@ -124,7 +125,7 @@ def refresh_trakt_token_online():
     except Exception: pass
     return None
 
-def get_kodi_url(conf):
+def get_kodi_url(conf: Dict[str, str]) -> Optional[str]:
     if conf.get("SHIELD_IP") and conf.get("KODI_PORT"):
         return f"http://{conf['SHIELD_IP']}:{conf['KODI_PORT']}/jsonrpc"
     return None
