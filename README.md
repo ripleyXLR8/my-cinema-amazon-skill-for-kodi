@@ -11,7 +11,9 @@
 ![Vibe Coding](https://img.shields.io/badge/Built%20with-Google%20Gemini-8E75B2)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-orange?logo=buymeacoffee&logoColor=white)](https://buymeacoffee.com/ripleyxlr8)
 
-**The primary goal of this plugin is to enable seamless voice control for Kodi through Amazon Alexa, specifically optimized to search, play, and resume media using the Fen Light add-on via TMDB Helper on devices like Nvidia Shield or Raspberry Pi. This container can be installed on your Unraid server and is available directly through Community Applications (CA) via my [Unraid templates repository](https://github.com/ripleyXLR8/unraid-templates).**
+**This container is an Alexa Skill allowing voice control for your favorite Kodi Player (for example FenLight AM). It is specifically optimized to search, play, and resume media using the FenLight AM add-on via TMDB Helper on devices like Nvidia Shield or Raspberry Pi.**
+
+**This container can be installed directly using docker or on your Unraid Server directly through Community Applications (CA).**
 
 This dockerized solution acts as a middleware bridge, featuring a modern **Web UI Control Panel**, intelligent power management, and an automated patcher to ensure Fen Light remains compatible with external playback calls.
 
