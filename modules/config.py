@@ -60,7 +60,9 @@ def get_app_config() -> Dict[str, str]:
         "KODI_USER": os.getenv("KODI_USER", "kodi"),
         "KODI_PASS": os.getenv("KODI_PASS", "kodi"),
         "PLAYER_DEFAULT": os.getenv("PLAYER_DEFAULT", "fenlight_auto.json"),
-        "PLAYER_SELECT": os.getenv("PLAYER_SELECT", "fenlight_select.json")
+        "PLAYER_SELECT": os.getenv("PLAYER_SELECT", "fenlight_select.json"),
+        "WEB_UI_USERNAME": os.getenv("WEB_UI_USERNAME", "admin"),
+        "WEB_UI_PASSWORD": os.getenv("WEB_UI_PASSWORD", "admin")
     }
     if os.path.exists(APP_CONFIG_FILE):
         try:
@@ -132,12 +134,6 @@ def get_kodi_url(conf: Dict[str, str]) -> Optional[str]:
     return None
 
 def get_secret_key() -> str:
-    """
-    Récupère la clé secrète Flask :
-    1. Variable d'environnement (prioritaire pour le déploiement cloud/prod)
-    2. Fichier config.json (persistance locale)
-    3. Génération et sauvegarde automatique au premier démarrage
-    """
     env_key = os.getenv("FLASK_SECRET_KEY")
     if env_key:
         return env_key
