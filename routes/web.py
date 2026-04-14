@@ -15,7 +15,26 @@ from modules.patcher import PATCH_STATE, check_and_patch_fenlight
 from modules.extensions import executor
 
 web_bp = Blueprint('web', __name__)
-APP_VERSION: str = "2.4.9"
+APP_VERSION: str = "2.4.12"
+
+@web_bp.before_request
+def require_auth():
+    # Exclure la route de santé et l'icône de l'authentification
+    if request.endpoint in ['web.health', 'web.serve_icon']:
+        return
+        
+    conf = get_app_config()
+    expected_user = conf.get("WEB_UI_USERNAME", "admin")
+    expected_pass = conf.get("WEB_UI_PASSWORD", "admin")
+    
+    # Si un mot de passe est défini, on vérifie l'authentification HTTP Basic
+    if expected_pass:
+        auth = request.authorization
+        if not auth or auth.username != expected_user or auth.password != expected_pass:
+            return Response(
+                'Accès non autorisé. Veuillez vous connecter.', 401,
+                {'WWW-Authenticate': 'Basic realm="MyCinema Control Panel"'}
+            )
 
 @web_bp.route('/')
 def dashboard() -> str:
@@ -32,8 +51,14 @@ def settings() -> Union[str, Response]:
     if request.method == 'POST':
         action = request.form.get("action")
         if action == "save_config":
-            new_c = {k: request.form.get(k, "").strip() for k in ["TMDB_API_KEY", "ALEXA_SKILL_ID", "TARGET_OS", "SHIELD_IP", "SHIELD_MAC", "KODI_PORT", "KODI_USER", "KODI_PASS", "SSH_USER", "SSH_PASS", "PLAYER_DEFAULT", "PLAYER_SELECT"]}
-            if save_app_config(new_c): flash("Config sauvegardée avec succès !", "success")
+            # CORRECTION : On charge la config existante pour ne pas écraser les clés cachées (ex: FLASK_SECRET_KEY)
+            current_config = get_app_config()
+            for k in ["TMDB_API_KEY", "ALEXA_SKILL_ID", "TARGET_OS", "SHIELD_IP", "SHIELD_MAC", "KODI_PORT", "KODI_USER", "KODI_PASS", "SSH_USER", "SSH_PASS", "PLAYER_DEFAULT", "PLAYER_SELECT"]:
+                current_config[k] = request.form.get(k, "").strip()
+                
+            if save_app_config(current_config): 
+                flash("Config sauvegardée avec succès !", "success")
+                
         elif action == "save_trakt":
             c_id = request.form.get('client_id')
             c_secret = request.form.get('client_secret')
