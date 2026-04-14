@@ -14,7 +14,9 @@ def is_device_online(ip):
     try:
         res = subprocess.run(["ping", "-c", "1", "-W", "1", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return res.returncode == 0
-    except Exception: return False
+    except Exception as e:
+        logger.error(f"Erreur ping device {ip}: {e}")
+        return False
 
 def is_device_awake(ip, target_os):
     if not ip or target_os != "android": return True
@@ -22,7 +24,9 @@ def is_device_awake(ip, target_os):
         subprocess.run(["adb", "connect", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
         res = subprocess.run(["adb", "shell", "dumpsys", "power"], capture_output=True, text=True, timeout=3)
         return "mWakefulness=Awake" in res.stdout
-    except Exception: return False
+    except Exception as e:
+        logger.error(f"Erreur vérification éveil {ip}: {e}")
+        return False
 
 def is_kodi_responsive():
     url = get_kodi_url(get_app_config())
@@ -30,7 +34,9 @@ def is_kodi_responsive():
     try:
         r = requests.get(url, timeout=2)
         return r.status_code in [200, 401, 405]
-    except Exception: return False
+    except Exception as e:
+        logger.error(f"Erreur vérification Kodi responsive: {e}")
+        return False
 
 def wake_and_start_kodi():
     conf = get_app_config()
@@ -40,14 +46,17 @@ def wake_and_start_kodi():
     if target == "libreelec": return False
 
     if mac:
-        try: send_magic_packet(mac)
-        except Exception: pass
+        try:
+            send_magic_packet(mac)
+        except Exception as e:
+            logger.error(f"Erreur Wake-on-LAN ({mac}): {e}")
     try:
         subprocess.run(["adb", "connect", ip], stdout=subprocess.DEVNULL, timeout=5)
         subprocess.run(["adb", "shell", "input", "keyevent", "WAKEUP"], stdout=subprocess.DEVNULL, timeout=5)
         time.sleep(1)
         subprocess.run(["adb", "shell", "am", "start", "-n", "org.xbmc.kodi/.Splash"], stdout=subprocess.DEVNULL, timeout=5)
-    except Exception: pass
+    except Exception as e:
+        logger.error(f"Erreur ADB wake_and_start vers {ip}: {e}")
     
     for _ in range(30):
         if is_kodi_responsive(): return True
@@ -64,7 +73,9 @@ def search_tmdb_movie(query, year=None, lang="fr"):
         r = requests.get("https://api.themoviedb.org/3/search/movie", params=params, timeout=5)
         res = r.json()['results'][0]
         return res['id'], res['title'], res.get('release_date', '')[:4]
-    except Exception: return None, None, None
+    except Exception as e:
+        logger.error(f"Erreur recherche film TMDB '{query}': {e}")
+        return None, None, None
 
 def search_tmdb_show(query, lang="fr"):
     conf = get_app_config()
@@ -75,7 +86,9 @@ def search_tmdb_show(query, lang="fr"):
         r = requests.get("https://api.themoviedb.org/3/search/tv", params=params, timeout=5)
         res = r.json()['results'][0]
         return res['id'], res['name']
-    except Exception: return None, None
+    except Exception as e:
+        logger.error(f"Erreur recherche série TMDB '{query}': {e}")
+        return None, None
 
 def check_episode_exists(tmdb_id, season, episode):
     conf = get_app_config()
@@ -84,7 +97,10 @@ def check_episode_exists(tmdb_id, season, episode):
     try:
         r = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season}/episode/{episode}", params={"api_key": tmdb_key}, timeout=2)
         return r.status_code == 200
-    except Exception: return True
+    except Exception as e:
+        logger.error(f"Erreur vérification épisode TMDB {tmdb_id} S{season}E{episode}: {e}")
+        # En cas d'erreur de vérification, on retourne True pour tenter la lecture quand même (fail-open)
+        return True
 
 def get_tmdb_last_aired(tmdb_id):
     conf = get_app_config()
@@ -94,7 +110,9 @@ def get_tmdb_last_aired(tmdb_id):
         r = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}", params={"api_key": tmdb_key}, timeout=2)
         last_ep = r.json().get('last_episode_to_air')
         if last_ep: return last_ep['season_number'], last_ep['episode_number']
-    except Exception: return None, None
+    except Exception as e:
+        logger.error(f"Erreur récupération dernier épisode TMDB {tmdb_id}: {e}")
+    return None, None
 
 def get_trakt_next_episode(tmdb_show_id):
     token = load_trakt_token()
@@ -107,7 +125,8 @@ def get_trakt_next_episode(tmdb_show_id):
         r = requests.get(f"https://api.trakt.tv/shows/{trakt_id}/progress/watched", headers=headers, timeout=5)
         next_ep = r.json().get('next_episode')
         if next_ep: return next_ep['season'], next_ep['number']
-    except Exception: pass
+    except Exception as e:
+        logger.error(f"Erreur récupération prochain épisode Trakt pour TMDB {tmdb_show_id}: {e}")
     return None, None
 
 def get_playback_url(tmdb_id, media_type, season=None, episode=None, force_select=False):
@@ -123,8 +142,10 @@ def worker_process(plugin_url):
     url = get_kodi_url(conf)
     if url:
         auth = (conf.get("KODI_USER"), conf.get("KODI_PASS")) if conf.get("KODI_USER") else None
-        try: requests.post(url, json={"jsonrpc": "2.0", "method": "Player.Open", "params": {"item": {"file": plugin_url}}, "id": 1}, auth=auth, timeout=5)
-        except Exception: pass
+        try: 
+            requests.post(url, json={"jsonrpc": "2.0", "method": "Player.Open", "params": {"item": {"file": plugin_url}}, "id": 1}, auth=auth, timeout=5)
+        except Exception as e:
+            logger.error(f"Erreur exécution requête Kodi Player.Open: {e}")
 
 def get_kodi_active_player():
     conf = get_app_config()
@@ -135,7 +156,8 @@ def get_kodi_active_player():
         r = requests.post(url, json={"jsonrpc": "2.0", "method": "Player.GetActivePlayers", "id": 1}, auth=auth, timeout=3)
         for player in r.json().get('result', []):
             if player.get('type') == 'video': return player.get('playerid')
-    except Exception: pass
+    except Exception as e:
+        logger.error(f"Erreur récupération lecteurs actifs Kodi: {e}")
     return None
 
 def get_kodi_player_item(player_id):
@@ -147,7 +169,8 @@ def get_kodi_player_item(player_id):
         payload = {"jsonrpc": "2.0", "method": "Player.GetItem", "params": {"properties": ["title", "year", "season", "episode", "showtitle"], "playerid": player_id}, "id": 1}
         r = requests.post(url, json=payload, auth=auth, timeout=3)
         return r.json().get('result', {}).get('item')
-    except Exception: pass
+    except Exception as e:
+        logger.error(f"Erreur récupération item lecteur Kodi {player_id}: {e}")
     return None
 
 def stop_kodi_playback(player_id):
@@ -157,7 +180,8 @@ def stop_kodi_playback(player_id):
     try:
         auth = (conf.get("KODI_USER"), conf.get("KODI_PASS")) if conf.get("KODI_USER") else None
         requests.post(url, json={"jsonrpc": "2.0", "method": "Player.Stop", "params": {"playerid": player_id}, "id": 1}, auth=auth, timeout=3)
-    except Exception: pass
+    except Exception as e:
+        logger.error(f"Erreur arrêt lecture Kodi: {e}")
 
 def change_source_worker(player_id, next_url):
     stop_kodi_playback(player_id)
