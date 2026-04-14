@@ -6,19 +6,20 @@ import time
 import logging
 import paramiko
 from datetime import datetime
+from typing import Dict, Any
 from modules.config import logger, get_app_config, DATA_DIR
 
-PATCH_STATE = {"status": "Non vérifié", "version": "Inconnue", "last_check": "Jamais"}
-FENLIGHT_LOCAL_TEMP = os.path.join(DATA_DIR, "kodi_utils_temp.py")
+PATCH_STATE: Dict[str, str] = {"status": "Non vérifié", "version": "Inconnue", "last_check": "Jamais"}
+FENLIGHT_LOCAL_TEMP: str = os.path.join(DATA_DIR, "kodi_utils_temp.py")
 
-def check_and_patch_fenlight():
+def check_and_patch_fenlight() -> None:
     global PATCH_STATE
     conf = get_app_config()
     ip, target = conf.get("SHIELD_IP"), conf.get("TARGET_OS")
     if not ip: return
     
     PATCH_STATE["last_check"] = datetime.now().strftime("%H:%M:%S")
-    content = ""
+    content: str = ""
     
     try:
         if target == "android":
@@ -67,7 +68,7 @@ def check_and_patch_fenlight():
             logger.error(f"Erreur écriture du patch Fen Light ({target}): {e}")
             PATCH_STATE["status"] = "Erreur écriture"
 
-def patcher_scheduler():
+def patcher_scheduler() -> None:
     while True:
         check_and_patch_fenlight()
         time.sleep(3600)
