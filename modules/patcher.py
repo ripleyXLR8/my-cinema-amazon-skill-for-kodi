@@ -34,7 +34,8 @@ def check_and_patch_fenlight():
             with ssh.open_sftp().file("/storage/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py", 'r') as f:
                 content = f.read().decode('utf-8')
             ssh.close()
-    except Exception:
+    except Exception as e:
+        logger.error(f"Erreur connexion ou lecture pour le patch ({target}): {e}")
         PATCH_STATE["status"] = "Erreur connexion"
         return
 
@@ -65,7 +66,9 @@ def check_and_patch_fenlight():
                     f.write(new_content)
                 ssh.close()
             PATCH_STATE["status"] = "Patché"
-        except Exception: PATCH_STATE["status"] = "Erreur écriture"
+        except Exception as e:
+            logger.error(f"Erreur écriture du patch Fen Light ({target}): {e}")
+            PATCH_STATE["status"] = "Erreur écriture"
 
 def patcher_scheduler():
     while True:
