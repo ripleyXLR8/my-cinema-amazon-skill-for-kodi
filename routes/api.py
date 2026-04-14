@@ -1,5 +1,7 @@
 # routes/api.py
 import os
+import time
+import json
 from flask import Blueprint, request, jsonify
 from flask.wrappers import Response
 from typing import Union, Tuple, Dict, Any, Optional
@@ -44,6 +46,43 @@ def api_logs() -> Response:
     except Exception as e: 
         logger.error(f"Erreur lecture logs API: {e}")
         return jsonify({"logs": f"Erreur : {e}"})
+
+@api_bp.route('/api/logs/stream', methods=['GET'])
+def api_logs_stream():
+    def generate():
+        if not os.path.exists(LOG_FILE):
+            yield f"data: {json.dumps({'logs': 'Aucun log disponible.', 'clear': True})}\n\n"
+            while True:
+                time.sleep(5)
+                yield ": keepalive\n\n"
+        
+        with open(LOG_FILE, 'r', encoding='utf-8') as f:
+            lines = f.readlines()[-150:]
+            yield f"data: {json.dumps({'logs': ''.join(lines), 'clear': True})}\n\n"
+            while True:
+                pos = f.tell()
+                line = f.readline()
+                if not line:
+                    if os.path.getsize(LOG_FILE) < pos:
+                        # Si le fichier a été tronqué (effacé), on se replace au début
+                        f.seek(0, 0)
+                        yield f"data: {json.dumps({'logs': '', 'clear': True})}\n\n"
+                    else:
+                        time.sleep(0.5)
+                    continue
+                yield f"data: {json.dumps({'logs': line, 'clear': False})}\n\n"
+                
+    return Response(generate(), mimetype='text/event-stream')
+
+@api_bp.route('/api/logs/clear', methods=['POST'])
+def clear_logs() -> Response:
+    try:
+        with open(LOG_FILE, 'w', encoding='utf-8') as f:
+            f.write("")
+        return jsonify({"status": "success"})
+    except Exception as e:
+        logger.error(f"Erreur effacement logs: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @api_bp.route('/api/status', methods=['GET'])
 def api_status() -> Response:
