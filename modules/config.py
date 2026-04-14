@@ -5,6 +5,7 @@ import logging
 import sys
 import time
 import requests
+import secrets
 from typing import Dict, Any, Optional
 
 DATA_DIR: str = "/app/data"
@@ -129,3 +130,26 @@ def get_kodi_url(conf: Dict[str, str]) -> Optional[str]:
     if conf.get("SHIELD_IP") and conf.get("KODI_PORT"):
         return f"http://{conf['SHIELD_IP']}:{conf['KODI_PORT']}/jsonrpc"
     return None
+
+def get_secret_key() -> str:
+    """
+    Récupère la clé secrète Flask :
+    1. Variable d'environnement (prioritaire pour le déploiement cloud/prod)
+    2. Fichier config.json (persistance locale)
+    3. Génération et sauvegarde automatique au premier démarrage
+    """
+    env_key = os.getenv("FLASK_SECRET_KEY")
+    if env_key:
+        return env_key
+    
+    config = get_app_config()
+    if config.get("FLASK_SECRET_KEY"):
+        return config["FLASK_SECRET_KEY"]
+    
+    new_key = secrets.token_hex(24)
+    config["FLASK_SECRET_KEY"] = new_key
+    
+    if save_app_config(config):
+        logger.info("🔑 Flask Secret Key générée et sauvegardée dans config.json pour persistance.")
+    
+    return new_key
