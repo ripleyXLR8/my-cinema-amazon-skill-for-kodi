@@ -1,9 +1,6 @@
 # modules/patcher.py
 import os
-import re
-import subprocess
 import time
-import logging
 import paramiko
 from datetime import datetime
 from typing import Dict, Any
@@ -23,11 +20,22 @@ def check_and_patch_fenlight() -> None:
     
     try:
         if target == "android":
-            subprocess.run(["adb", "connect", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=5)
+            from modules.adb import get_adb_device
+            device = get_adb_device(ip)
+            if not device:
+                PATCH_STATE["status"] = "Erreur connexion ADB"
+                return
+                
             if os.path.exists(FENLIGHT_LOCAL_TEMP): os.remove(FENLIGHT_LOCAL_TEMP)
-            res = subprocess.run(["adb", "pull", "/sdcard/Android/data/org.xbmc.kodi/files/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py", FENLIGHT_LOCAL_TEMP], capture_output=True, timeout=10)
-            if res.returncode == 0:
+            # Pull via l'API native Python
+            device.pull("/sdcard/Android/data/org.xbmc.kodi/files/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py", FENLIGHT_LOCAL_TEMP)
+            device.close()
+            
+            if os.path.exists(FENLIGHT_LOCAL_TEMP):
                 with open(FENLIGHT_LOCAL_TEMP, 'r', encoding='utf-8') as f: content = f.read()
+            else:
+                raise Exception("Pull ADB échoué.")
+                
         elif target == "libreelec":
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -55,7 +63,13 @@ def check_and_patch_fenlight() -> None:
         try:
             if target == "android":
                 with open(FENLIGHT_LOCAL_TEMP, 'w', encoding='utf-8') as f: f.write(new_content)
-                subprocess.run(["adb", "push", FENLIGHT_LOCAL_TEMP, "/sdcard/Android/data/org.xbmc.kodi/files/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py"], stdout=subprocess.DEVNULL)
+                from modules.adb import get_adb_device
+                device = get_adb_device(ip)
+                if device:
+                    device.push(FENLIGHT_LOCAL_TEMP, "/sdcard/Android/data/org.xbmc.kodi/files/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py")
+                    device.close()
+                else:
+                    raise Exception("Impossible de se reconnecter pour le push ADB.")
             else:
                 ssh = paramiko.SSHClient()
                 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
