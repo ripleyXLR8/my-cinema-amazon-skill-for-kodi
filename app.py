@@ -1,7 +1,7 @@
 # app.py
-# VERSION : 2.4.5
+# VERSION : 2.4.6
 # DATE    : 2026-04-14
-# DESCRIPTION : Refactoring - ThreadPoolExecutor, Logging & Fix SessionEndedRequest
+# DESCRIPTION : Refactoring - Fix Initialisation Gunicorn (Translations & Patcher)
 
 from flask import Flask, request, jsonify, render_template, redirect, url_for, flash, send_from_directory
 from concurrent.futures import ThreadPoolExecutor
@@ -26,7 +26,7 @@ from ask_sdk_webservice_support.verifier import RequestVerifier
 from wakeonlan import send_magic_packet
 import requests
 
-APP_VERSION = "2.4.5"
+APP_VERSION = "2.4.6"
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev_secret_key")
 
@@ -357,10 +357,16 @@ def build_res(text, end_session=True, attributes={}):
     return {"version": "1.0", "sessionAttributes": attributes, "response": {"outputSpeech": {"type": "PlainText", "text": text}, "shouldEndSession": end_session}}
 
 # ==========================================
-# INITIALISATION
+# INITIALISATION GLOBALE (Gunicorn & Local)
 # ==========================================
+
+# Ces fonctions s'exécutent dès que Gunicorn importe le fichier app.py
+load_translations()
+
+# Sécurité : on s'assure de ne pas lancer plusieurs threads si l'app est rechargée
+if not any(thread.name == "PatcherThread" for thread in threading.enumerate()):
+    patcher_thread = threading.Thread(target=patcher_scheduler, daemon=True, name="PatcherThread")
+    patcher_thread.start()
+
 if __name__ == '__main__':
-    load_translations()
-    # Le scheduler reste un daemon thread
-    threading.Thread(target=patcher_scheduler, daemon=True).start()
     app.run(host='0.0.0.0', port=5000)
