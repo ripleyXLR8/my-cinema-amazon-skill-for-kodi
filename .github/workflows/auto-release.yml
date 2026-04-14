@@ -21,8 +21,8 @@ jobs:
       - name: Extract version from app.py
         id: version_check
         run: |
-          # Lit le numéro de version dans app.py
-          VERSION=$(grep -Po 'APP_VERSION = "\K[^"]*' app.py)
+          # Lit le numéro de version dans app.py (compatible avec le type hinting)
+          VERSION=$(grep -Po 'APP_VERSION(?: *: *str)?\s*=\s*"\K[^"]*' app.py)
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           
           # Vérifie si un tag avec ce nom existe déjà (pour ne pas recréer la même release)
