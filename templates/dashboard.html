@@ -178,7 +178,12 @@
 </div>
 
 <div class="mt-6 card p-6 rounded-xl flex flex-col" style="height: 400px;">
-    <h2 class="text-slate-400 text-sm uppercase font-semibold mb-4">System Logs</h2>
+    <div class="flex justify-between items-center mb-4">
+        <h2 class="text-slate-400 text-sm uppercase font-semibold">System Logs</h2>
+        <button id="clearLogsBtn" class="bg-red-900/50 hover:bg-red-800 text-red-200 text-xs font-bold py-1.5 px-3 rounded-lg transition border border-red-800">
+            EFFACER LES LOGS
+        </button>
+    </div>
     <div id="logViewer" class="flex-grow bg-slate-900 border border-slate-700 rounded-lg p-4 font-mono text-xs text-slate-300 overflow-y-auto whitespace-pre-wrap break-all">Chargement des logs...</div>
 </div>
 
@@ -192,22 +197,24 @@
         isUserScrolling = !isAtBottom;
     });
 
-    async function fetchLogs() {
-        try {
-            const response = await fetch('/api/logs');
-            const data = await response.json();
-            
-            if (data.logs !== logViewer.innerText) {
-                logViewer.innerText = data.logs || "Aucun log disponible.";
-                
-                if (!isUserScrolling) {
-                    logViewer.scrollTop = logViewer.scrollHeight;
-                }
+    // Écouteur pour le bouton d'effacement
+    document.getElementById('clearLogsBtn').addEventListener('click', async () => {
+        if(confirm('Voulez-vous vraiment effacer les logs de MyCinema ?')) {
+            const btn = document.getElementById('clearLogsBtn');
+            const originalText = btn.innerText;
+            btn.innerText = '...';
+            btn.disabled = true;
+            try {
+                await fetch('/api/logs/clear', { method: 'POST' });
+                document.getElementById('logViewer').innerText = '';
+            } catch (e) {
+                console.error("Erreur lors de l'effacement", e);
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
             }
-        } catch (e) {
-            console.error("Erreur de récupération des logs", e);
         }
-    }
+    });
 
     // Récupération dynamique du statut
     async function fetchStatus() {
@@ -218,7 +225,6 @@
             const deviceDot = document.getElementById('device-status-dot');
             const deviceText = document.getElementById('device-status-text');
             
-            // Logique à 3 états : Offline (Rouge) -> Sleep (Jaune) -> Awake (Vert)
             if (!data.device_ok) {
                 deviceDot.className = 'h-3 w-3 rounded-full bg-red-500 transition-colors duration-300';
                 deviceText.className = 'text-xs font-bold text-red-400 ml-1 transition-colors duration-300';
@@ -269,24 +275,50 @@
     });
     // -------------------------------------------------------------
 
-    // Gestion intelligente du polling
-    let logsInterval;
+    // Gestion intelligente du polling et du flux SSE (Server-Sent Events)
     let statusInterval;
+    let eventSource;
 
     function startPolling() {
         stopPolling();
-        fetchLogs();
+        
+        // Polling basique du statut général
         fetchStatus();
-        logsInterval = setInterval(fetchLogs, 3000);
         statusInterval = setInterval(fetchStatus, 5000);
+
+        // Configuration du Flux SSE pour les logs (Server-Sent Events)
+        if (!eventSource || eventSource.readyState === EventSource.CLOSED) {
+            eventSource = new EventSource('/api/logs/stream');
+            
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                
+                if (data.clear) {
+                    logViewer.innerText = data.logs || (data.logs === "" ? "" : "Aucun log disponible.");
+                } else {
+                    logViewer.innerText += data.logs;
+                }
+                
+                // Défilement automatique
+                if (!isUserScrolling) {
+                    logViewer.scrollTop = logViewer.scrollHeight;
+                }
+            };
+            
+            eventSource.onerror = function(err) {
+                console.error("Erreur EventSource (Flux de logs), reconnexion auto en cours...", err);
+            };
+        }
     }
 
     function stopPolling() {
-        clearInterval(logsInterval);
         clearInterval(statusInterval);
+        if (eventSource) {
+            eventSource.close();
+        }
     }
 
-    // Arrêt des requêtes si l'onglet n'est pas actif
+    // Arrêt des requêtes et fermeture du SSE si l'onglet n'est pas actif pour économiser le Gunicorn
     document.addEventListener("visibilitychange", () => {
         if (document.hidden) {
             stopPolling();
