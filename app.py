@@ -30,7 +30,8 @@ import requests
 
 APP_VERSION: str = "2.4.8"
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev_secret_key")
+# Génère une clé sécurisée à chaque démarrage pour les sessions Flask si non fournie
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
 
 # Initialisation de l'exécuteur de threads (pool de 5 workers max)
 executor = ThreadPoolExecutor(max_workers=5)
@@ -362,7 +363,8 @@ def alexa_handler() -> Union[Tuple[Response, int], Response]:
     return jsonify(build_res(get_text("not_understood", lang)))
 
 def build_res(text: str, end_session: bool = True, attributes: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    if attributes === None: attributes = {}
+    if attributes is None: 
+        attributes = {}
     return {"version": "1.0", "sessionAttributes": attributes, "response": {"outputSpeech": {"type": "PlainText", "text": text}, "shouldEndSession": end_session}}
 
 # ==========================================
