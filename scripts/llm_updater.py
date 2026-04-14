@@ -118,14 +118,16 @@ def main():
 
     today_str = datetime.date.today().strftime("%Y-%m-%d")
     
-    version_match = re.search(r'APP_VERSION\s*=\s*"(\d+)\.(\d+)\.(\d+)"', app_py_content)
+    # Prise en compte du Type Hinting avec (?: *: *str)?
+    version_match = re.search(r'APP_VERSION(?: *: *str)?\s*=\s*"(\d+)\.(\d+)\.(\d+)"', app_py_content)
     if version_match:
         major, minor, patch = version_match.groups()
         new_version = f"{major}.{minor}.{int(patch) + 1}"
     else:
         new_version = "1.0.0"
 
-    new_app_py = re.sub(r'APP_VERSION\s*=\s*"\d+\.\d+\.\d+"', f'APP_VERSION = "{new_version}"', app_py_content)
+    # Mise à jour avec conservation du typage si présent
+    new_app_py = re.sub(r'(APP_VERSION(?: *: *str)?)\s*=\s*"\d+\.\d+\.\d+"', f'\\1 = "{new_version}"', app_py_content)
     new_app_py = re.sub(r'APP_DATE\s*=\s*"\d{4}-\d{2}-\d{2}"', f'APP_DATE = "{today_str}"', new_app_py)
 
     with open(APP_PY_PATH, "w", encoding="utf-8") as f:
