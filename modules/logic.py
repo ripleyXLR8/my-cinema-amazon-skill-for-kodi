@@ -99,7 +99,7 @@ def check_episode_exists(tmdb_id, season, episode):
         return r.status_code == 200
     except Exception as e:
         logger.error(f"Erreur vérification épisode TMDB {tmdb_id} S{season}E{episode}: {e}")
-        # En cas d'erreur de vérification, on retourne True pour tenter la lecture quand même (fail-open)
+        # On tente quand même la lecture si TMDB ne répond pas
         return True
 
 def get_tmdb_last_aired(tmdb_id):
