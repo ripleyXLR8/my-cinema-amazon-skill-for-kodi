@@ -1,3 +1,6 @@
+## [2.4.2] - 2026-04-14
+- 🤖 Vibe Coding : Adaptation automatique du patch de lecture externe pour Fen Light v2.1.97
+
 # Changelog
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
