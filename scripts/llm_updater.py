@@ -5,12 +5,12 @@ import zipfile
 import io
 import re
 import datetime
-import google.generativeai as genai
+from google import genai
 
 # --- Configuration ---
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 APP_PY_PATH = "app.py"
-PATCHER_PY_PATH = "modules/patcher.py"  # CIBLE MODIFIÉE POUR LA V2.4.0
+PATCHER_PY_PATH = "modules/patcher.py"
 CHANGELOG_PATH = "ChangeLog.md"
 README_PATH = "README.md"
 STATE_FILE_PATH = "scripts/.last_fenlight_version"
@@ -23,7 +23,8 @@ def main():
     if not GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY manquante dans l'environnement.")
     
-    genai.configure(api_key=GEMINI_API_KEY)
+    # Initialisation du nouveau client Google GenAI
+    client = genai.Client(api_key=GEMINI_API_KEY)
 
     print(f"Recherche de la dernière version de {ADDON_ID}...")
     version_url = f"{REPO_RAW_BASE}/fen_light_version"
@@ -86,10 +87,14 @@ def main():
     """
 
     print("Analyse par le LLM Gemini en cours...")
-    model = genai.GenerativeModel('gemini-2.5-flash') 
-    result = model.generate_content(prompt)
     
-    new_patcher_py = result.text.strip()
+    # Utilisation de la nouvelle méthode du SDK google.genai
+    response = client.models.generate_content(
+        model='gemini-2.5-flash',
+        contents=prompt
+    )
+    
+    new_patcher_py = response.text.strip()
     
     # Nettoyage des balises Markdown renvoyées par le LLM
     if new_patcher_py.startswith(MD_TICKS + "python"):
