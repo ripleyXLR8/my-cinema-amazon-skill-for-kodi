@@ -4,11 +4,11 @@ import subprocess
 import time
 import requests
 import paramiko
-import threading
 import logging
 from typing import Optional, Tuple, Dict, Any
 from wakeonlan import send_magic_packet
 from modules.config import logger, get_app_config, get_kodi_url, load_trakt_token, load_trakt_config, refresh_trakt_token_online
+from modules.adb import send_adb_command
 
 def is_device_online(ip: Optional[str]) -> bool:
     if not ip: return False
@@ -22,9 +22,8 @@ def is_device_online(ip: Optional[str]) -> bool:
 def is_device_awake(ip: Optional[str], target_os: str) -> bool:
     if not ip or target_os != "android": return True
     try:
-        subprocess.run(["adb", "connect", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
-        res = subprocess.run(["adb", "shell", "dumpsys", "power"], capture_output=True, text=True, timeout=3)
-        return "mWakefulness=Awake" in res.stdout
+        res = send_adb_command(ip, "dumpsys power")
+        return res is not None and "mWakefulness=Awake" in res
     except Exception as e:
         logger.error(f"Erreur vérification éveil {ip}: {e}")
         return False
@@ -55,12 +54,11 @@ def wake_and_start_kodi() -> bool:
         except Exception as e:
             logger.error(f"Erreur Wake-on-LAN ({mac}): {e}")
     try:
-        subprocess.run(["adb", "connect", ip], stdout=subprocess.DEVNULL, timeout=5)
-        subprocess.run(["adb", "shell", "input", "keyevent", "WAKEUP"], stdout=subprocess.DEVNULL, timeout=5)
+        send_adb_command(ip, "input keyevent WAKEUP")
         time.sleep(1)
-        subprocess.run(["adb", "shell", "am", "start", "-n", "org.xbmc.kodi/.Splash"], stdout=subprocess.DEVNULL, timeout=5)
+        send_adb_command(ip, "am start -n org.xbmc.kodi/.Splash")
     except Exception as e:
-        logger.error(f"Erreur ADB wake_and_start vers {ip}: {e}")
+        logger.error(f"Erreur lors du réveil ADB vers {ip}: {e}")
     
     for _ in range(30):
         if is_kodi_responsive(): return True
