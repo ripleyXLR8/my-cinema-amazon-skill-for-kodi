@@ -1,9 +1,7 @@
 # routes/web.py
 import os
-import subprocess
 import paramiko
 import requests
-import time
 from flask import Blueprint, request, jsonify, render_template, redirect, url_for, flash, send_from_directory
 from flask.wrappers import Response
 from typing import Union, Tuple
@@ -51,14 +49,12 @@ def settings() -> Union[str, Response]:
     if request.method == 'POST':
         action = request.form.get("action")
         if action == "save_config":
-            # CORRECTION : On charge la config existante pour ne pas écraser les clés cachées (ex: FLASK_SECRET_KEY)
+            # On charge la config existante pour ne pas écraser les clés système
             current_config = get_app_config()
             for k in ["TMDB_API_KEY", "ALEXA_SKILL_ID", "TARGET_OS", "SHIELD_IP", "SHIELD_MAC", "KODI_PORT", "KODI_USER", "KODI_PASS", "SSH_USER", "SSH_PASS", "PLAYER_DEFAULT", "PLAYER_SELECT"]:
                 current_config[k] = request.form.get(k, "").strip()
                 
-            if save_app_config(current_config): 
-                flash("Config sauvegardée avec succès !", "success")
-                
+            if save_app_config(current_config): flash("Config sauvegardée avec succès !", "success")
         elif action == "save_trakt":
             c_id = request.form.get('client_id')
             c_secret = request.form.get('client_secret')
@@ -130,10 +126,8 @@ def wake_device_route() -> Response:
         try: send_magic_packet(mac)
         except Exception as e: logger.error(f"Erreur WoL signal: {e}")
     if conf.get("TARGET_OS") == "android" and ip:
-        try:
-            subprocess.run(["adb", "connect", ip], stdout=subprocess.DEVNULL, timeout=5)
-            subprocess.run(["adb", "shell", "input", "keyevent", "WAKEUP"], stdout=subprocess.DEVNULL, timeout=5)
-        except Exception as e: logger.error(f"Erreur ADB wakeup: {e}")
+        from modules.adb import send_adb_command
+        send_adb_command(ip, "input keyevent WAKEUP")
     flash("Signal de réveil envoyé.")
     return redirect(url_for('web.dashboard'))
 
@@ -142,13 +136,10 @@ def shutdown_device_route() -> Response:
     conf = get_app_config()
     ip, target = conf.get("SHIELD_IP"), conf.get("TARGET_OS")
     if target == "android" and ip:
-        try:
-            subprocess.run(["adb", "connect", ip], stdout=subprocess.DEVNULL, timeout=5)
-            subprocess.run(["adb", "shell", "input", "keyevent", "SLEEP"], stdout=subprocess.DEVNULL, timeout=5)
-            flash("Commande de mise en veille envoyée (ADB).")
-        except Exception as e: 
-            logger.error(f"Erreur ADB sleep: {e}")
-            flash("Erreur ADB.")
+        from modules.adb import send_adb_command
+        res = send_adb_command(ip, "input keyevent SLEEP")
+        if res is not None: flash("Commande de mise en veille envoyée (ADB).")
+        else: flash("Erreur de communication ADB.")
     elif target == "libreelec" and ip:
         try:
             ssh = paramiko.SSHClient()
@@ -167,11 +158,9 @@ def start_kodi_route() -> Response:
     conf = get_app_config()
     ip = conf.get("SHIELD_IP")
     if conf.get("TARGET_OS") == "android" and ip:
-        try:
-            subprocess.run(["adb", "connect", ip], stdout=subprocess.DEVNULL, timeout=5)
-            subprocess.run(["adb", "shell", "am", "start", "-n", "org.xbmc.kodi/.Splash"], stdout=subprocess.DEVNULL, timeout=5)
-            flash("Start Kodi envoyé (ADB).")
-        except Exception as e: logger.error(f"Erreur ADB start kodi: {e}")
+        from modules.adb import send_adb_command
+        send_adb_command(ip, "am start -n org.xbmc.kodi/.Splash")
+        flash("Start Kodi envoyé (ADB).")
     return redirect(url_for('web.dashboard'))
 
 @web_bp.route('/stop-kodi', methods=['POST'])
@@ -186,11 +175,9 @@ def stop_kodi_route() -> Response:
             return redirect(url_for('web.dashboard'))
         except Exception as e: logger.error(f"Erreur Application.Quit: {e}")
     if conf.get("TARGET_OS") == "android" and ip:
-        try:
-            subprocess.run(["adb", "connect", ip], stdout=subprocess.DEVNULL, timeout=5)
-            subprocess.run(["adb", "shell", "am", "force-stop", "org.xbmc.kodi"], stdout=subprocess.DEVNULL, timeout=5)
-            flash("Kodi forcé à l'arrêt (ADB).")
-        except Exception as e: logger.error(f"Erreur ADB force-stop: {e}")
+        from modules.adb import send_adb_command
+        send_adb_command(ip, "am force-stop org.xbmc.kodi")
+        flash("Kodi forcé à l'arrêt (ADB).")
     return redirect(url_for('web.dashboard'))
 
 @web_bp.route('/test-connection', methods=['POST'])
@@ -198,13 +185,10 @@ def test_connection_route() -> Response:
     conf = get_app_config()
     ip, target = conf.get("SHIELD_IP"), conf.get("TARGET_OS")
     if target == "android" and ip:
-        try:
-            subprocess.run(["adb", "connect", ip], capture_output=True, timeout=5)
-            res = subprocess.run(["adb", "shell", "echo", "ADB_OK"], capture_output=True, text=True, timeout=5)
-            flash("Test ADB réussi ✅" if "ADB_OK" in res.stdout else "Échec ADB ❌")
-        except Exception as e: 
-            logger.error(f"Erreur test ADB: {e}")
-            flash(f"Erreur ADB : {e}")
+        from modules.adb import send_adb_command
+        res = send_adb_command(ip, "echo ADB_OK")
+        if res and "ADB_OK" in res: flash("Test ADB réussi ✅")
+        else: flash("Échec ADB ❌")
     elif target == "libreelec" and ip:
         try:
             ssh = paramiko.SSHClient()
