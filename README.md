@@ -6,7 +6,6 @@
 ![Platform](https://img.shields.io/badge/Platform-Nvidia%20Shield-76B900?logo=nvidia&logoColor=white)
 ![Platform](https://img.shields.io/badge/Platform-Raspberry%20Pi-C51A4A?logo=raspberry-pi&logoColor=white)
 ![Language](https://img.shields.io/badge/Language-English%20%2F%20French-blue)
-![Flask](https://img.shields.io/badge/flask-%23000.svg?style=flat&logo=flask&logoColor=white)
 ![License](https://img.shields.io/github/license/ripleyxlr8/kodi-fenlight-alexa-skill?style=flat)
 ![Vibe Coding](https://img.shields.io/badge/Built%20with-Google%20Gemini-8E75B2)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-orange?logo=buymeacoffee&logoColor=white)](https://buymeacoffee.com/ripleyxlr8)
