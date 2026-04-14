@@ -40,9 +40,6 @@ def check_and_patch_fenlight():
         return
 
     # Signatures de patch pour le fichier kodi_utils.py (v2.1.97)
-    # L'objectif est de contourner les vérifications de lecture externe dans player_check et external_playback_check.
-    # 1. Dans player_check, forcer l'entrée dans la branche de préparation de lecture interne pour éviter le blocage 'else'.
-    # 2. Dans external_playback_check, faire en sorte que la condition de blocage soit toujours fausse.
     T1_O = "if mode == 'playback.%s' % playback_key():"
     T1_P = "if True: # mode == 'playback.%s' % playback_key():"
     T2_O = "if not playback_key() in params:"
@@ -66,7 +63,7 @@ def check_and_patch_fenlight():
                     f.write(new_content)
                 ssh.close()
             PATCH_STATE["status"] = "Patché"
-        except Exception as e:
+        except Exception as e: 
             logger.error(f"Erreur écriture du patch Fen Light ({target}): {e}")
             PATCH_STATE["status"] = "Erreur écriture"
 

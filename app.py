@@ -1,9 +1,10 @@
 # app.py
-# VERSION : 2.4.3
+# VERSION : 2.4.4
 # DATE    : 2026-04-14
-# DESCRIPTION : Refactoring modulaire - Fichier complet restauré
+# DESCRIPTION : Refactoring - Intégration ThreadPoolExecutor & Logging complet
 
 from flask import Flask, request, jsonify, render_template, redirect, url_for, flash, send_from_directory
+from concurrent.futures import ThreadPoolExecutor
 import threading
 import os
 import sys
@@ -25,9 +26,12 @@ from ask_sdk_webservice_support.verifier import RequestVerifier
 from wakeonlan import send_magic_packet
 import requests
 
-APP_VERSION = "2.4.3"
+APP_VERSION = "2.4.4"
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev_secret_key")
+
+# Initialisation de l'exécuteur de threads (pool de 5 workers max)
+executor = ThreadPoolExecutor(max_workers=5)
 
 # ==========================================
 # ROUTES FLASK (WEB UI)
@@ -60,8 +64,12 @@ def settings():
                     data = r.json()
                     save_trakt_token_data(data['access_token'], data['refresh_token'], c_id, c_secret)
                     flash("Tokens Trakt générés avec succès !")
-                else: flash(f"Erreur Trakt : {r.text}")
-            except Exception as e: flash(f"Erreur : {str(e)}")
+                else: 
+                    logger.error(f"Erreur réponse Trakt OAuth: {r.text}")
+                    flash(f"Erreur Trakt : {r.text}")
+            except Exception as e: 
+                logger.error(f"Exception lors de l'auth Trakt: {e}")
+                flash(f"Erreur : {str(e)}")
         return redirect(url_for('settings'))
     return render_template('settings.html', version=APP_VERSION, conf=get_app_config(), trakt_cfg=load_trakt_config())
 
@@ -77,7 +85,9 @@ def api_logs():
         if not os.path.exists(LOG_FILE): return jsonify({"logs": "Aucun log disponible."})
         with open(LOG_FILE, 'r', encoding='utf-8') as f:
             return jsonify({"logs": "".join(f.readlines()[-150:])})
-    except Exception as e: return jsonify({"logs": f"Erreur : {e}"})
+    except Exception as e: 
+        logger.error(f"Erreur lecture logs API: {e}")
+        return jsonify({"logs": f"Erreur : {e}"})
 
 @app.route('/api/status', methods=['GET'])
 def api_status():
@@ -103,41 +113,43 @@ def web_play_route():
     if media_type == 'movie':
         mid, title, _ = search_tmdb_movie(query)
         if mid:
-            threading.Thread(target=worker_process, args=(get_playback_url(mid, "movie", force_select=force_select),)).start()
+            executor.submit(worker_process, get_playback_url(mid, "movie", force_select=force_select))
             flash(f"🎬 Lancement : {title}")
     elif media_type == 'show':
         mid, title = search_tmdb_show(query)
         if mid:
             if show_action == 'specific':
                 s, e = request.form.get('season', type=int, default=1), request.form.get('episode', type=int, default=1)
-                threading.Thread(target=worker_process, args=(get_playback_url(mid, "episode", s, e, force_select),)).start()
+                executor.submit(worker_process, get_playback_url(mid, "episode", s, e, force_select))
                 flash(f"📺 Lancement : {title} S{s}E{e}")
             elif show_action == 'latest':
                 s, e = get_tmdb_last_aired(mid)
                 if s and e:
-                    threading.Thread(target=worker_process, args=(get_playback_url(mid, "episode", s, e, force_select),)).start()
+                    executor.submit(worker_process, get_playback_url(mid, "episode", s, e, force_select))
                     flash(f"📺 Lancement dernier : {title} S{s}E{e}")
             else:
                 s, e = get_trakt_next_episode(mid)
                 if s and e:
-                    threading.Thread(target=worker_process, args=(get_playback_url(mid, "episode", s, e, force_select),)).start()
+                    executor.submit(worker_process, get_playback_url(mid, "episode", s, e, force_select))
                     flash(f"📺 Reprise : {title} S{s}E{e}")
                 else:
-                    threading.Thread(target=worker_process, args=(get_playback_url(mid, "episode", 1, 1, force_select),)).start()
+                    executor.submit(worker_process, get_playback_url(mid, "episode", 1, 1, force_select))
                     flash(f"📺 Aucun historique Trakt. Lancement S1E1 : {title}")
     return redirect(url_for('dashboard'))
 
 @app.route('/wake-device', methods=['POST'])
 def wake_device_route():
     conf = get_app_config()
-    if conf.get("SHIELD_MAC"): 
-        try: send_magic_packet(conf.get("SHIELD_MAC"))
-        except: pass
-    if conf.get("TARGET_OS") == "android" and conf.get("SHIELD_IP"):
+    mac = conf.get("SHIELD_MAC")
+    ip = conf.get("SHIELD_IP")
+    if mac: 
+        try: send_magic_packet(mac)
+        except Exception as e: logger.error(f"Erreur WoL signal: {e}")
+    if conf.get("TARGET_OS") == "android" and ip:
         try:
-            subprocess.run(["adb", "connect", conf.get("SHIELD_IP")], stdout=subprocess.DEVNULL, timeout=5)
+            subprocess.run(["adb", "connect", ip], stdout=subprocess.DEVNULL, timeout=5)
             subprocess.run(["adb", "shell", "input", "keyevent", "WAKEUP"], stdout=subprocess.DEVNULL, timeout=5)
-        except: pass
+        except Exception as e: logger.error(f"Erreur ADB wakeup: {e}")
     flash("Signal de réveil envoyé.")
     return redirect(url_for('dashboard'))
 
@@ -150,7 +162,9 @@ def shutdown_device_route():
             subprocess.run(["adb", "connect", ip], stdout=subprocess.DEVNULL, timeout=5)
             subprocess.run(["adb", "shell", "input", "keyevent", "SLEEP"], stdout=subprocess.DEVNULL, timeout=5)
             flash("Commande de mise en veille envoyée (ADB).")
-        except: flash("Erreur ADB.")
+        except Exception as e: 
+            logger.error(f"Erreur ADB sleep: {e}")
+            flash("Erreur ADB.")
     elif target == "libreelec" and ip:
         try:
             ssh = paramiko.SSHClient()
@@ -159,36 +173,40 @@ def shutdown_device_route():
             ssh.exec_command("poweroff")
             ssh.close()
             flash("Extinction envoyée (SSH).")
-        except: flash("Erreur SSH.")
+        except Exception as e: 
+            logger.error(f"Erreur SSH poweroff: {e}")
+            flash("Erreur SSH.")
     return redirect(url_for('dashboard'))
 
 @app.route('/start-kodi', methods=['POST'])
 def start_kodi_route():
     conf = get_app_config()
-    if conf.get("TARGET_OS") == "android" and conf.get("SHIELD_IP"):
+    ip = conf.get("SHIELD_IP")
+    if conf.get("TARGET_OS") == "android" and ip:
         try:
-            subprocess.run(["adb", "connect", conf.get("SHIELD_IP")], stdout=subprocess.DEVNULL, timeout=5)
+            subprocess.run(["adb", "connect", ip], stdout=subprocess.DEVNULL, timeout=5)
             subprocess.run(["adb", "shell", "am", "start", "-n", "org.xbmc.kodi/.Splash"], stdout=subprocess.DEVNULL, timeout=5)
             flash("Start Kodi envoyé (ADB).")
-        except: pass
+        except Exception as e: logger.error(f"Erreur ADB start kodi: {e}")
     return redirect(url_for('dashboard'))
 
 @app.route('/stop-kodi', methods=['POST'])
 def stop_kodi_route():
     conf = get_app_config()
+    ip = conf.get("SHIELD_IP")
     if is_kodi_responsive():
         try:
             auth = (conf.get("KODI_USER"), conf.get("KODI_PASS")) if conf.get("KODI_USER") else None
             requests.post(get_kodi_url(conf), json={"jsonrpc": "2.0", "method": "Application.Quit", "id": 1}, auth=auth, timeout=3)
             flash("Kodi arrêté proprement.")
             return redirect(url_for('dashboard'))
-        except: pass
-    if conf.get("TARGET_OS") == "android" and conf.get("SHIELD_IP"):
+        except Exception as e: logger.error(f"Erreur Application.Quit: {e}")
+    if conf.get("TARGET_OS") == "android" and ip:
         try:
-            subprocess.run(["adb", "connect", conf.get("SHIELD_IP")], stdout=subprocess.DEVNULL, timeout=5)
+            subprocess.run(["adb", "connect", ip], stdout=subprocess.DEVNULL, timeout=5)
             subprocess.run(["adb", "shell", "am", "force-stop", "org.xbmc.kodi"], stdout=subprocess.DEVNULL, timeout=5)
             flash("Kodi forcé à l'arrêt (ADB).")
-        except: pass
+        except Exception as e: logger.error(f"Erreur ADB force-stop: {e}")
     return redirect(url_for('dashboard'))
 
 @app.route('/test-connection', methods=['POST'])
@@ -200,7 +218,9 @@ def test_connection_route():
             subprocess.run(["adb", "connect", ip], capture_output=True, timeout=5)
             res = subprocess.run(["adb", "shell", "echo", "ADB_OK"], capture_output=True, text=True, timeout=5)
             flash("Test ADB réussi ✅" if "ADB_OK" in res.stdout else "Échec ADB ❌")
-        except Exception as e: flash(f"Erreur ADB : {e}")
+        except Exception as e: 
+            logger.error(f"Erreur test ADB: {e}")
+            flash(f"Erreur ADB : {e}")
     elif target == "libreelec":
         try:
             ssh = paramiko.SSHClient()
@@ -209,12 +229,14 @@ def test_connection_route():
             stdin, stdout, stderr = ssh.exec_command("echo SSH_OK")
             flash("Test SSH réussi ✅" if stdout.read().decode('utf-8').strip() == "SSH_OK" else "Échec SSH ❌")
             ssh.close()
-        except Exception as e: flash(f"Erreur SSH : {e}")
+        except Exception as e: 
+            logger.error(f"Erreur test SSH: {e}")
+            flash(f"Erreur SSH : {e}")
     return redirect(url_for('dashboard'))
 
 @app.route('/trigger-patch', methods=['POST'])
 def trigger_patch_route():
-    threading.Thread(target=check_and_patch_fenlight).start()
+    executor.submit(check_and_patch_fenlight)
     flash("Processus de patch lancé.")
     return redirect(url_for('dashboard'))
 
@@ -225,8 +247,11 @@ def trigger_patch_route():
 @app.route('/alexa-webhook', methods=['POST'])
 def alexa_handler():
     raw_body_str = request.get_data(as_text=True)
-    try: RequestVerifier().verify({'Signature': request.headers.get('Signature', ''), 'SignatureCertChainUrl': request.headers.get('SignatureCertChainUrl', '')}, raw_body_str, None)
-    except Exception: return jsonify({"error": "Forbidden"}), 403
+    try: 
+        RequestVerifier().verify({'Signature': request.headers.get('Signature', ''), 'SignatureCertChainUrl': request.headers.get('SignatureCertChainUrl', '')}, raw_body_str, None)
+    except Exception as e: 
+        logger.warning(f"Signature Alexa invalide ou expirée: {e}")
+        return jsonify({"error": "Forbidden"}), 403
 
     req_data = request.get_json()
     conf = get_app_config()
@@ -250,7 +275,7 @@ def alexa_handler():
         manual_msg = get_text("manual_select", lang) if force_select else ""
 
         if intent_name == "TriggerPatcherIntent":
-            threading.Thread(target=check_and_patch_fenlight).start()
+            executor.submit(check_and_patch_fenlight)
             return jsonify(build_res(get_text("patcher_triggered", lang)))
 
         elif intent_name == "ChangeSourceIntent":
@@ -268,7 +293,7 @@ def alexa_handler():
                 if mid: new_url = get_playback_url(mid, "episode", item.get('season'), item.get('episode'), force_select=True)
             
             if new_url:
-                threading.Thread(target=change_source_worker, args=(pid, new_url)).start()
+                executor.submit(change_source_worker, pid, new_url)
                 return jsonify(build_res(get_text("change_source_movie" if item.get('type') == 'movie' else "change_source_episode", lang, item.get('title') or item.get('showtitle'), item.get('season'), item.get('episode'))))
             return jsonify(build_res(get_text("content_error", lang)))
 
@@ -279,7 +304,7 @@ def alexa_handler():
             if not mid: return jsonify(build_res(get_text("show_not_found", lang, query)))
             s, e = get_trakt_next_episode(mid)
             if s and e:
-                threading.Thread(target=worker_process, args=(get_playback_url(mid, "episode", s, e, force_select),)).start()
+                executor.submit(worker_process, get_playback_url(mid, "episode", s, e, force_select))
                 return jsonify(build_res(get_text("resume_show", lang, title, s, e, manual_msg)))
             return jsonify(build_res(get_text("no_progress", lang, title), False))
 
@@ -287,7 +312,7 @@ def alexa_handler():
             query = slots.get('MovieName', {}).get('value')
             mid, title, myear = search_tmdb_movie(query, year=slots.get('MovieYear', {}).get('value'), lang=lang)
             if mid:
-                threading.Thread(target=worker_process, args=(get_playback_url(mid, "movie", force_select=force_select),)).start()
+                executor.submit(worker_process, get_playback_url(mid, "movie", force_select=force_select))
                 return jsonify(build_res(get_text("launch_movie", lang, title, f" de {myear}" if myear else "", manual_msg)))
             return jsonify(build_res(get_text("movie_not_found", lang, query)))
 
@@ -298,7 +323,7 @@ def alexa_handler():
             if not mid: return jsonify(build_res(get_text("show_not_found", lang, query)))
             if s and e:
                 if check_episode_exists(mid, s, e):
-                    threading.Thread(target=worker_process, args=(get_playback_url(mid, "episode", s, e, force_select),)).start()
+                    executor.submit(worker_process, get_playback_url(mid, "episode", s, e, force_select))
                     return jsonify(build_res(get_text("launch_show", lang, title, s, e, manual_msg)))
                 return jsonify(build_res(get_text("episode_not_found", lang), False))
             ts, te = get_trakt_next_episode(mid)
@@ -308,14 +333,14 @@ def alexa_handler():
         elif intent_name in ["AMAZON.YesIntent", "ResumeIntent", "ReprendreIntent"]:
             if attributes.get('step') == 'ask_playback_method' and attributes.get('trakt_next_s'):
                 s, e = attributes['trakt_next_s'], attributes['trakt_next_e']
-                threading.Thread(target=worker_process, args=(get_playback_url(attributes['pending_show_id'], "episode", s, e, force_select),)).start()
+                executor.submit(worker_process, get_playback_url(attributes['pending_show_id'], "episode", s, e, force_select))
                 return jsonify(build_res(get_text("resume_show", lang, attributes['pending_show_name'], s, e, get_text("manual_select", lang) if force_select else "")))
             return jsonify(build_res(get_text("nothing_pending", lang)))
 
         elif intent_name == "LatestEpisodeIntent":
             if attributes.get('step') == 'ask_playback_method':
                 s, e = attributes['tmdb_last_s'], attributes['tmdb_last_e']
-                threading.Thread(target=worker_process, args=(get_playback_url(attributes['pending_show_id'], "episode", s, e, force_select),)).start()
+                executor.submit(worker_process, get_playback_url(attributes['pending_show_id'], "episode", s, e, force_select))
                 return jsonify(build_res(get_text("launch_last", lang, attributes['pending_show_name'])))
             return jsonify(build_res(get_text("unavailable", lang)))
 
@@ -332,5 +357,6 @@ def build_res(text, end_session=True, attributes={}):
 # ==========================================
 if __name__ == '__main__':
     load_translations()
+    # Le scheduler reste un daemon thread car il est censé vivre toute la durée de vie de l'app
     threading.Thread(target=patcher_scheduler, daemon=True).start()
     app.run(host='0.0.0.0', port=5000)
