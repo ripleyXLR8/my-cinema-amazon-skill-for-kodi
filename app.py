@@ -1,7 +1,7 @@
 # app.py
-# VERSION : 2.4.4
+# VERSION : 2.4.5
 # DATE    : 2026-04-14
-# DESCRIPTION : Refactoring - Intégration ThreadPoolExecutor & Logging complet
+# DESCRIPTION : Refactoring - ThreadPoolExecutor, Logging & Fix SessionEndedRequest
 
 from flask import Flask, request, jsonify, render_template, redirect, url_for, flash, send_from_directory
 from concurrent.futures import ThreadPoolExecutor
@@ -26,7 +26,7 @@ from ask_sdk_webservice_support.verifier import RequestVerifier
 from wakeonlan import send_magic_packet
 import requests
 
-APP_VERSION = "2.4.4"
+APP_VERSION = "2.4.5"
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev_secret_key")
 
@@ -265,6 +265,10 @@ def alexa_handler():
     lang = req_data['request'].get('locale', 'fr-FR').split('-')[0]
     attributes = req_data.get('session', {}).get('attributes', {})
 
+    # Correction pour Amazon Alexa : Ne jamais renvoyer de réponse texte sur SessionEndedRequest
+    if req_type == "SessionEndedRequest":
+        return jsonify({}), 200
+
     if req_type == "LaunchRequest":
         return jsonify(build_res(get_text("launch", lang), end_session=False))
 
@@ -357,6 +361,6 @@ def build_res(text, end_session=True, attributes={}):
 # ==========================================
 if __name__ == '__main__':
     load_translations()
-    # Le scheduler reste un daemon thread car il est censé vivre toute la durée de vie de l'app
+    # Le scheduler reste un daemon thread
     threading.Thread(target=patcher_scheduler, daemon=True).start()
     app.run(host='0.0.0.0', port=5000)
