@@ -1,6 +1,6 @@
-flask
-requests
-wakeonlan
+flask==3.0.3
+requests==2.31.0
+wakeonlan==3.1.0
 paramiko==3.4.0
 ask-sdk-webservice-support==1.0.0
-gunicorn
+gunicorn==21.2.0
