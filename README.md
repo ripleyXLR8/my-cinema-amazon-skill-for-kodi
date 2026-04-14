@@ -1,4 +1,4 @@
-# 🎬 My Cinema - An Amazon Skill for Kodi
+# 🎬 My Cinema - An Alexa Skill for FenLight AM (or your favorite Kodi player)
 
 ![Version](https://img.shields.io/badge/Version-2.3.2-blue)
 ![Python](https://img.shields.io/badge/Python-3.9-blue?logo=python&logoColor=white)
