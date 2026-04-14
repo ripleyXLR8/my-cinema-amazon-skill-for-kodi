@@ -1,9 +1,10 @@
 # app.py
-# VERSION : 2.4.7
+# VERSION : 2.4.8
 # DATE    : 2026-04-14
-# DESCRIPTION : Refactoring - Fix Initialisation Gunicorn (Translations & Patcher)
+# DESCRIPTION : Refactoring - Fix Initialisation Gunicorn (Translations & Patcher) + Type Hinting
 
 from flask import Flask, request, jsonify, render_template, redirect, url_for, flash, send_from_directory
+from flask.wrappers import Response
 from concurrent.futures import ThreadPoolExecutor
 import threading
 import os
@@ -12,6 +13,7 @@ import subprocess
 import paramiko
 import time
 from datetime import datetime
+from typing import Any, Dict, Optional, Tuple, Union
 
 # Imports locaux
 from modules.config import logger, get_app_config, save_app_config, load_trakt_config, load_trakt_token, \
@@ -26,7 +28,7 @@ from ask_sdk_webservice_support.verifier import RequestVerifier
 from wakeonlan import send_magic_packet
 import requests
 
-APP_VERSION = "2.4.7"
+APP_VERSION: str = "2.4.8"
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev_secret_key")
 
@@ -38,7 +40,7 @@ executor = ThreadPoolExecutor(max_workers=5)
 # ==========================================
 
 @app.route('/')
-def dashboard():
+def dashboard() -> str:
     conf = get_app_config()
     device_ok = is_device_online(conf.get('SHIELD_IP'))
     return render_template('dashboard.html', version=APP_VERSION, device_ok=device_ok,
@@ -48,7 +50,7 @@ def dashboard():
         p_def=conf.get('PLAYER_DEFAULT'), p_sel=conf.get('PLAYER_SELECT'), skill_id=conf.get('ALEXA_SKILL_ID'))
 
 @app.route('/settings', methods=['GET', 'POST'])
-def settings():
+def settings() -> Union[str, Response]:
     if request.method == 'POST':
         action = request.form.get("action")
         if action == "save_config":
@@ -74,13 +76,15 @@ def settings():
     return render_template('settings.html', version=APP_VERSION, conf=get_app_config(), trakt_cfg=load_trakt_config())
 
 @app.route('/health')
-def health(): return jsonify({"status": "healthy", "version": APP_VERSION}), 200
+def health() -> Tuple[Response, int]: 
+    return jsonify({"status": "healthy", "version": APP_VERSION}), 200
 
 @app.route('/icon.png')
-def serve_icon(): return send_from_directory(os.path.dirname(__file__), 'icon.png')
+def serve_icon() -> Response: 
+    return send_from_directory(os.path.dirname(__file__), 'icon.png')
 
 @app.route('/api/logs', methods=['GET'])
-def api_logs():
+def api_logs() -> Response:
     try:
         if not os.path.exists(LOG_FILE): return jsonify({"logs": "Aucun log disponible."})
         with open(LOG_FILE, 'r', encoding='utf-8') as f:
@@ -90,7 +94,7 @@ def api_logs():
         return jsonify({"logs": f"Erreur : {e}"})
 
 @app.route('/api/status', methods=['GET'])
-def api_status():
+def api_status() -> Response:
     conf = get_app_config()
     device_ok = is_device_online(conf.get('SHIELD_IP'))
     return jsonify({
@@ -104,41 +108,42 @@ def api_status():
 # ==========================================
 
 @app.route('/web-play', methods=['POST'])
-def web_play_route():
+def web_play_route() -> Response:
     query = request.form.get('query')
     media_type = request.form.get('media_type')
     force_select = request.form.get('force_select') == 'on'
     show_action = request.form.get('show_action', 'resume')
     
-    if media_type == 'movie':
+    if media_type == 'movie' and query:
         mid, title, _ = search_tmdb_movie(query)
         if mid:
             executor.submit(worker_process, get_playback_url(mid, "movie", force_select=force_select))
             flash(f"🎬 Lancement : {title}")
-    elif media_type == 'show':
+    elif media_type == 'show' and query:
         mid, title = search_tmdb_show(query)
         if mid:
             if show_action == 'specific':
-                s, e = request.form.get('season', type=int, default=1), request.form.get('episode', type=int, default=1)
+                s = request.form.get('season', type=int, default=1)
+                e = request.form.get('episode', type=int, default=1)
                 executor.submit(worker_process, get_playback_url(mid, "episode", s, e, force_select))
                 flash(f"📺 Lancement : {title} S{s}E{e}")
             elif show_action == 'latest':
-                s, e = get_tmdb_last_aired(mid)
-                if s and e:
-                    executor.submit(worker_process, get_playback_url(mid, "episode", s, e, force_select))
-                    flash(f"📺 Lancement dernier : {title} S{s}E{e}")
+                ls, le = get_tmdb_last_aired(mid)
+                if ls and le:
+                    executor.submit(worker_process, get_playback_url(mid, "episode", ls, le, force_select))
+                    flash(f"📺 Lancement dernier : {title} S{ls}E{le}")
             else:
-                s, e = get_trakt_next_episode(mid)
-                if s and e:
-                    executor.submit(worker_process, get_playback_url(mid, "episode", s, e, force_select))
-                    flash(f"📺 Reprise : {title} S{s}E{e}")
+                ts, te = get_trakt_next_episode(mid)
+                if ts and te:
+                    executor.submit(worker_process, get_playback_url(mid, "episode", ts, te, force_select))
+                    flash(f"📺 Reprise : {title} S{ts}E{te}")
                 else:
                     executor.submit(worker_process, get_playback_url(mid, "episode", 1, 1, force_select))
                     flash(f"📺 Aucun historique Trakt. Lancement S1E1 : {title}")
     return redirect(url_for('dashboard'))
 
 @app.route('/wake-device', methods=['POST'])
-def wake_device_route():
+def wake_device_route() -> Response:
     conf = get_app_config()
     mac = conf.get("SHIELD_MAC")
     ip = conf.get("SHIELD_IP")
@@ -154,7 +159,7 @@ def wake_device_route():
     return redirect(url_for('dashboard'))
 
 @app.route('/shutdown-device', methods=['POST'])
-def shutdown_device_route():
+def shutdown_device_route() -> Response:
     conf = get_app_config()
     ip, target = conf.get("SHIELD_IP"), conf.get("TARGET_OS")
     if target == "android" and ip:
@@ -179,7 +184,7 @@ def shutdown_device_route():
     return redirect(url_for('dashboard'))
 
 @app.route('/start-kodi', methods=['POST'])
-def start_kodi_route():
+def start_kodi_route() -> Response:
     conf = get_app_config()
     ip = conf.get("SHIELD_IP")
     if conf.get("TARGET_OS") == "android" and ip:
@@ -191,13 +196,13 @@ def start_kodi_route():
     return redirect(url_for('dashboard'))
 
 @app.route('/stop-kodi', methods=['POST'])
-def stop_kodi_route():
+def stop_kodi_route() -> Response:
     conf = get_app_config()
     ip = conf.get("SHIELD_IP")
     if is_kodi_responsive():
         try:
             auth = (conf.get("KODI_USER"), conf.get("KODI_PASS")) if conf.get("KODI_USER") else None
-            requests.post(get_kodi_url(conf), json={"jsonrpc": "2.0", "method": "Application.Quit", "id": 1}, auth=auth, timeout=3)
+            requests.post(get_kodi_url(conf) or "", json={"jsonrpc": "2.0", "method": "Application.Quit", "id": 1}, auth=auth, timeout=3)
             flash("Kodi arrêté proprement.")
             return redirect(url_for('dashboard'))
         except Exception as e: logger.error(f"Erreur Application.Quit: {e}")
@@ -210,10 +215,10 @@ def stop_kodi_route():
     return redirect(url_for('dashboard'))
 
 @app.route('/test-connection', methods=['POST'])
-def test_connection_route():
+def test_connection_route() -> Response:
     conf = get_app_config()
     ip, target = conf.get("SHIELD_IP"), conf.get("TARGET_OS")
-    if target == "android":
+    if target == "android" and ip:
         try:
             subprocess.run(["adb", "connect", ip], capture_output=True, timeout=5)
             res = subprocess.run(["adb", "shell", "echo", "ADB_OK"], capture_output=True, text=True, timeout=5)
@@ -221,7 +226,7 @@ def test_connection_route():
         except Exception as e: 
             logger.error(f"Erreur test ADB: {e}")
             flash(f"Erreur ADB : {e}")
-    elif target == "libreelec":
+    elif target == "libreelec" and ip:
         try:
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -235,7 +240,7 @@ def test_connection_route():
     return redirect(url_for('dashboard'))
 
 @app.route('/trigger-patch', methods=['POST'])
-def trigger_patch_route():
+def trigger_patch_route() -> Response:
     executor.submit(check_and_patch_fenlight)
     flash("Processus de patch lancé.")
     return redirect(url_for('dashboard'))
@@ -245,7 +250,7 @@ def trigger_patch_route():
 # ==========================================
 
 @app.route('/alexa-webhook', methods=['POST'])
-def alexa_handler():
+def alexa_handler() -> Union[Tuple[Response, int], Response]:
     raw_body_str = request.get_data(as_text=True)
     try: 
         RequestVerifier().verify({'Signature': request.headers.get('Signature', ''), 'SignatureCertChainUrl': request.headers.get('SignatureCertChainUrl', '')}, raw_body_str, None)
@@ -254,6 +259,9 @@ def alexa_handler():
         return jsonify({"error": "Forbidden"}), 403
 
     req_data = request.get_json()
+    if not req_data:
+        return jsonify({"error": "Bad Request"}), 400
+
     conf = get_app_config()
     skill_id = conf.get("ALEXA_SKILL_ID")
 
@@ -296,7 +304,7 @@ def alexa_handler():
                 mid, _ = search_tmdb_show(item.get('showtitle'), lang=lang)
                 if mid: new_url = get_playback_url(mid, "episode", item.get('season'), item.get('episode'), force_select=True)
             
-            if new_url:
+            if new_url and pid is not None:
                 executor.submit(change_source_worker, pid, new_url)
                 return jsonify(build_res(get_text("change_source_movie" if item.get('type') == 'movie' else "change_source_episode", lang, item.get('title') or item.get('showtitle'), item.get('season'), item.get('episode'))))
             return jsonify(build_res(get_text("content_error", lang)))
@@ -336,15 +344,15 @@ def alexa_handler():
 
         elif intent_name in ["AMAZON.YesIntent", "ResumeIntent", "ReprendreIntent"]:
             if attributes.get('step') == 'ask_playback_method' and attributes.get('trakt_next_s'):
-                s, e = attributes['trakt_next_s'], attributes['trakt_next_e']
-                executor.submit(worker_process, get_playback_url(attributes['pending_show_id'], "episode", s, e, force_select))
-                return jsonify(build_res(get_text("resume_show", lang, attributes['pending_show_name'], s, e, get_text("manual_select", lang) if force_select else "")))
+                ts, te = attributes['trakt_next_s'], attributes['trakt_next_e']
+                executor.submit(worker_process, get_playback_url(attributes['pending_show_id'], "episode", ts, te, force_select))
+                return jsonify(build_res(get_text("resume_show", lang, attributes['pending_show_name'], ts, te, get_text("manual_select", lang) if force_select else "")))
             return jsonify(build_res(get_text("nothing_pending", lang)))
 
         elif intent_name == "LatestEpisodeIntent":
             if attributes.get('step') == 'ask_playback_method':
-                s, e = attributes['tmdb_last_s'], attributes['tmdb_last_e']
-                executor.submit(worker_process, get_playback_url(attributes['pending_show_id'], "episode", s, e, force_select))
+                ls, le = attributes['tmdb_last_s'], attributes['tmdb_last_e']
+                executor.submit(worker_process, get_playback_url(attributes['pending_show_id'], "episode", ls, le, force_select))
                 return jsonify(build_res(get_text("launch_last", lang, attributes['pending_show_name'])))
             return jsonify(build_res(get_text("unavailable", lang)))
 
@@ -353,7 +361,8 @@ def alexa_handler():
 
     return jsonify(build_res(get_text("not_understood", lang)))
 
-def build_res(text, end_session=True, attributes={}):
+def build_res(text: str, end_session: bool = True, attributes: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    if attributes === None: attributes = {}
     return {"version": "1.0", "sessionAttributes": attributes, "response": {"outputSpeech": {"type": "PlainText", "text": text}, "shouldEndSession": end_session}}
 
 # ==========================================
