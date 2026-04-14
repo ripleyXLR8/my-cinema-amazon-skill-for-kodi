@@ -77,6 +77,25 @@ def search_tmdb_show(query, lang="fr"):
         return res['id'], res['name']
     except Exception: return None, None
 
+def check_episode_exists(tmdb_id, season, episode):
+    conf = get_app_config()
+    tmdb_key = conf.get("TMDB_API_KEY")
+    if not tmdb_key: return False
+    try:
+        r = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}/season/{season}/episode/{episode}", params={"api_key": tmdb_key}, timeout=2)
+        return r.status_code == 200
+    except Exception: return True
+
+def get_tmdb_last_aired(tmdb_id):
+    conf = get_app_config()
+    tmdb_key = conf.get("TMDB_API_KEY")
+    if not tmdb_key: return None, None
+    try:
+        r = requests.get(f"https://api.themoviedb.org/3/tv/{tmdb_id}", params={"api_key": tmdb_key}, timeout=2)
+        last_ep = r.json().get('last_episode_to_air')
+        if last_ep: return last_ep['season_number'], last_ep['episode_number']
+    except Exception: return None, None
+
 def get_trakt_next_episode(tmdb_show_id):
     token = load_trakt_token()
     cfg = load_trakt_config()
@@ -106,3 +125,41 @@ def worker_process(plugin_url):
         auth = (conf.get("KODI_USER"), conf.get("KODI_PASS")) if conf.get("KODI_USER") else None
         try: requests.post(url, json={"jsonrpc": "2.0", "method": "Player.Open", "params": {"item": {"file": plugin_url}}, "id": 1}, auth=auth, timeout=5)
         except Exception: pass
+
+def get_kodi_active_player():
+    conf = get_app_config()
+    url = get_kodi_url(conf)
+    if not url: return None
+    try:
+        auth = (conf.get("KODI_USER"), conf.get("KODI_PASS")) if conf.get("KODI_USER") else None
+        r = requests.post(url, json={"jsonrpc": "2.0", "method": "Player.GetActivePlayers", "id": 1}, auth=auth, timeout=3)
+        for player in r.json().get('result', []):
+            if player.get('type') == 'video': return player.get('playerid')
+    except Exception: pass
+    return None
+
+def get_kodi_player_item(player_id):
+    conf = get_app_config()
+    url = get_kodi_url(conf)
+    if not url: return None
+    try:
+        auth = (conf.get("KODI_USER"), conf.get("KODI_PASS")) if conf.get("KODI_USER") else None
+        payload = {"jsonrpc": "2.0", "method": "Player.GetItem", "params": {"properties": ["title", "year", "season", "episode", "showtitle"], "playerid": player_id}, "id": 1}
+        r = requests.post(url, json=payload, auth=auth, timeout=3)
+        return r.json().get('result', {}).get('item')
+    except Exception: pass
+    return None
+
+def stop_kodi_playback(player_id):
+    conf = get_app_config()
+    url = get_kodi_url(conf)
+    if not url: return
+    try:
+        auth = (conf.get("KODI_USER"), conf.get("KODI_PASS")) if conf.get("KODI_USER") else None
+        requests.post(url, json={"jsonrpc": "2.0", "method": "Player.Stop", "params": {"playerid": player_id}, "id": 1}, auth=auth, timeout=3)
+    except Exception: pass
+
+def change_source_worker(player_id, next_url):
+    stop_kodi_playback(player_id)
+    time.sleep(2)
+    worker_process(next_url)
