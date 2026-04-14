@@ -37,6 +37,10 @@ services:
       - KODI_PORT=8080
       - KODI_USER=kodi
       - KODI_PASS=kodi
+
+      # --- SECURITE INTERFACE WEB ---
+      - WEB_UI_USERNAME=admin
+      - WEB_UI_PASSWORD=admin
       
       # --- API KEYS & SÉCURITÉ ---
       - TMDB_API_KEY=your_tmdb_api_key
