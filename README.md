@@ -51,6 +51,9 @@ Here is a quick comparison of the features available on the different platform :
 ## 🚀 Installation & Setup
 
 ### 1. Kodi Configuration (TMDB Helper Players)
+
+Install your favorite Kodi player like Fenlight AM. (use google to find a tutorial on how to install and configure Fenlight AM) and the TMDB Helper Add-On.
+
 Create the following `.json` files in your Kodi `userdata/addon_data/plugin.video.themoviedb.helper/players/` folder:
 
 * **fenlight_auto.json**: For standard, hands-free playback.
