@@ -34,8 +34,12 @@ def is_kodi_responsive():
     try:
         r = requests.get(url, timeout=2)
         return r.status_code in [200, 401, 405]
+    except requests.exceptions.ConnectionError:
+        # Kodi est éteint ou en train de démarrer. C'est normal, on ne spamme pas en ERROR.
+        logger.debug(f"Kodi non joignable (Connection refused). En attente d'allumage...")
+        return False
     except Exception as e:
-        logger.error(f"Erreur vérification Kodi responsive: {e}")
+        logger.error(f"Erreur inattendue vérification Kodi: {e}")
         return False
 
 def wake_and_start_kodi():
