@@ -1,5 +1,5 @@
 # app.py
-# VERSION : 2.4.10
+# VERSION : 2.4.11
 # DATE    : 2026-04-14
 # DESCRIPTION : Refactoring - Fix Initialisation Gunicorn (Translations & Patcher) + Type Hinting + Blueprints
 
@@ -15,7 +15,7 @@ from modules.patcher import patcher_scheduler
 from routes.web import web_bp
 from routes.api import api_bp
 
-APP_VERSION: str = "2.4.10"
+APP_VERSION: str = "2.4.11"
 
 app = Flask(__name__)
 # Génère une clé sécurisée à chaque démarrage pour les sessions Flask si non fournie
