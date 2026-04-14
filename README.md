@@ -1,6 +1,6 @@
 # 🎬 My Cinema - An Alexa Skill for FenLight AM (or your favorite Kodi player)
 
-![Version](https://img.shields.io/badge/Version-2.3.2-blue)
+![Version](https://img.shields.io/badge/Version-2.4.0-blue)
 ![Python](https://img.shields.io/badge/Python-3.9-blue?logo=python&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)
 [![Unraid Ready](https://img.shields.io/badge/Unraid-Community%20Applications-orange.svg)](https://forums.unraid.net/topic/197994-support-my-cinema-an-alexa-skill-to-control-fenlight-running-on-your-kodi-shield-based-media-center/)
