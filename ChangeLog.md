@@ -2,6 +2,11 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
+## [2.4.0] - 2026-04-14
+- 🏗️ **Refactorisation Modulaire** : Division du projet en modules (`config`, `logic`, `patcher`) pour corriger le problème de "God Object".
+- 🚀 **Performance** : Allègement du point d'entrée `app.py`.
+- 🤖 **Vibe Coding** : Adaptation du script d'auto-patching pour supporter la nouvelle structure modulaire.
+
 ## [2.0.0] - 2026-04-13
 - ✨ **Web UI Dashboard** : Ajout d'une interface web moderne (Tailwind CSS) pour monitorer l'état du système.
 - 🔑 **Trakt Setup Wizard** : Intégration d'un formulaire de configuration Trakt.tv pour générer les tokens automatiquement sans ligne de commande.
