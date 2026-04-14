@@ -25,7 +25,7 @@ from ask_sdk_webservice_support.verifier import RequestVerifier
 from wakeonlan import send_magic_packet
 import requests
 
-APP_VERSION = "2.4.1"
+APP_VERSION = "2.4.2"
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev_secret_key")
 
