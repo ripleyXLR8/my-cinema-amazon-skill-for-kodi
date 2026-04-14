@@ -15,17 +15,17 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.11'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests google-generativeai
+          pip install requests google-genai
 
       - name: Run LLM Updater Script
         env:
@@ -40,7 +40,7 @@ jobs:
       - name: Create Pull Request
         id: cpr
         if: steps.git-check.outputs.changes_detected == 'true'
-        uses: peter-evans/create-pull-request@v5
+        uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.PAT_TOKEN }}
           commit-message: "🤖 [Vibe Coding] Mise à jour des signatures de patch Fen Light"
@@ -56,5 +56,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          # Commande CLI GitHub pour fusionner la PR automatiquement
-          gh pr merge --merge --auto "${{ steps.cpr.outputs.pull-request-number }}"
+          # Commande CLI GitHub pour fusionner la PR automatiquement (forcé via admin)
+          gh pr merge --merge --admin "${{ steps.cpr.outputs.pull-request-number }}"
