@@ -1,5 +1,5 @@
 # app.py
-# VERSION : 2.4.6
+# VERSION : 2.4.7
 # DATE    : 2026-04-14
 # DESCRIPTION : Refactoring - Fix Initialisation Gunicorn (Translations & Patcher)
 
@@ -26,7 +26,7 @@ from ask_sdk_webservice_support.verifier import RequestVerifier
 from wakeonlan import send_magic_packet
 import requests
 
-APP_VERSION = "2.4.6"
+APP_VERSION = "2.4.7"
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev_secret_key")
 
