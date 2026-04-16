@@ -1,3 +1,6 @@
+## [2.6.2] - 2026-04-16
+- 🤖 Vibe Coding : Adaptation automatique du patch de lecture externe pour Fen Light v2.1.98
+
 ## [2.4.2] - 2026-04-14
 - 🤖 Vibe Coding : Adaptation automatique du patch de lecture externe pour Fen Light v2.1.97
 
