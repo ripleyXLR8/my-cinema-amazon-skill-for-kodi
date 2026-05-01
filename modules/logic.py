@@ -35,7 +35,6 @@ def is_kodi_responsive() -> bool:
         r = requests.get(url, timeout=2)
         return r.status_code in [200, 401, 405]
     except requests.exceptions.ConnectionError:
-        logger.debug(f"Kodi non joignable (Connection refused). En attente d'allumage...")
         return False
     except Exception as e:
         logger.error(f"Erreur inattendue vérification Kodi: {e}")
@@ -48,6 +47,7 @@ def wake_and_start_kodi() -> bool:
     if is_kodi_responsive(): return True
     if target == "libreelec": return False
 
+    logger.info(f"🔄 [Kodi] Kodi injoignable, tentative de réveil de l'appareil...")
     if mac:
         try:
             send_magic_packet(mac)
@@ -61,8 +61,12 @@ def wake_and_start_kodi() -> bool:
         logger.error(f"Erreur lors du réveil ADB vers {ip}: {e}")
     
     for _ in range(30):
-        if is_kodi_responsive(): return True
+        if is_kodi_responsive(): 
+            logger.info("✅ [Kodi] Appareil réveillé et Kodi prêt !")
+            return True
         time.sleep(1)
+    
+    logger.error("❌ [Kodi] Impossible de démarrer Kodi après 30 secondes.")
     return False
 
 def search_tmdb_movie(query: str, year: Optional[str] = None, lang: str = "fr") -> Tuple[Optional[int], Optional[str], Optional[str]]:
@@ -143,10 +147,12 @@ def worker_process(plugin_url: str) -> None:
     url = get_kodi_url(conf)
     if url:
         auth = (conf.get("KODI_USER"), conf.get("KODI_PASS")) if conf.get("KODI_USER") else None
+        logger.info(f"▶️ [Lecture] Envoi de la requête JSON-RPC vers Kodi (Player.Open)")
         try: 
             requests.post(url, json={"jsonrpc": "2.0", "method": "Player.Open", "params": {"item": {"file": plugin_url}}, "id": 1}, auth=auth, timeout=5)
+            logger.info("✅ [Lecture] Ordre de lecture pris en compte par Kodi.")
         except Exception as e:
-            logger.error(f"Erreur exécution requête Kodi Player.Open: {e}")
+            logger.error(f"❌ [Lecture] Erreur exécution requête Kodi Player.Open: {e}")
 
 def get_kodi_active_player() -> Optional[int]:
     conf = get_app_config()
@@ -181,10 +187,12 @@ def stop_kodi_playback(player_id: int) -> None:
     try:
         auth = (conf.get("KODI_USER"), conf.get("KODI_PASS")) if conf.get("KODI_USER") else None
         requests.post(url, json={"jsonrpc": "2.0", "method": "Player.Stop", "params": {"playerid": player_id}, "id": 1}, auth=auth, timeout=3)
+        logger.info(f"⏹️ [Lecture] Lecture arrêtée (Player {player_id})")
     except Exception as e:
         logger.error(f"Erreur arrêt lecture Kodi: {e}")
 
 def change_source_worker(player_id: int, next_url: str) -> None:
+    logger.info("🔄 [Lecture] Changement de source demandé, arrêt de la lecture en cours...")
     stop_kodi_playback(player_id)
     time.sleep(2)
     worker_process(next_url)
