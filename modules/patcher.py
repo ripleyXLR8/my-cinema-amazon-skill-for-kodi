@@ -48,10 +48,9 @@ def check_and_patch_fenlight() -> None:
         PATCH_STATE["status"] = "Erreur connexion"
         return
 
-    # Signatures de patch pour le fichier kodi_utils.py (v2.1.99)
-    # Les protections pour la lecture externe sont toujours les mêmes
-    # au sein des fonctions 'player_check' et 'external_playback_check'.
-    # Les chaînes de remplacement actuelles restent efficaces.
+    # Signatures de patch pour le fichier kodi_utils.py (v2.2.02)
+    # Les fonctions 'player_check' et 'external_playback_check' continuent d'utiliser les mêmes conditions
+    # pour bloquer la lecture externe. Les chaînes de remplacement existantes restent efficaces.
     T1_O = "if mode == 'playback.%s' % playback_key():"
     T1_P = "if True: # mode == 'playback.%s' % playback_key():"
     T2_O = "if not playback_key() in params:"
