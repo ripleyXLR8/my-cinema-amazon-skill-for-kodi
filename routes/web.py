@@ -16,7 +16,6 @@ web_bp = Blueprint('web', __name__)
 
 @web_bp.before_request
 def require_auth():
-    # Exclure la route de santé et l'icône de l'authentification
     if request.endpoint in ['web.health', 'web.serve_icon']:
         return
         
@@ -24,7 +23,6 @@ def require_auth():
     expected_user = conf.get("WEB_UI_USERNAME", "admin")
     expected_pass = conf.get("WEB_UI_PASSWORD", "admin")
     
-    # Si un mot de passe est défini, on vérifie l'authentification HTTP Basic
     if expected_pass:
         auth = request.authorization
         if not auth or auth.username != expected_user or auth.password != expected_pass:
@@ -48,27 +46,30 @@ def settings() -> Union[str, Response]:
     if request.method == 'POST':
         action = request.form.get("action")
         if action == "save_config":
-            # On charge la config existante pour ne pas écraser les clés système
             current_config = get_app_config()
             for k in ["TMDB_API_KEY", "ALEXA_SKILL_ID", "TARGET_OS", "SHIELD_IP", "SHIELD_MAC", "KODI_PORT", "KODI_USER", "KODI_PASS", "SSH_USER", "SSH_PASS", "PLAYER_DEFAULT", "PLAYER_SELECT"]:
                 current_config[k] = request.form.get(k, "").strip()
                 
-            if save_app_config(current_config): flash("Config sauvegardée avec succès !", "success")
+            if save_app_config(current_config): 
+                logger.info("⚙️ [Config] Configuration système sauvegardée.")
+                flash("Config sauvegardée avec succès !", "success")
         elif action == "save_trakt":
             c_id = request.form.get('client_id')
             c_secret = request.form.get('client_secret')
             pin = request.form.get('pin_code')
+            logger.info("🔑 [Trakt] Tentative de génération des tokens d'authentification...")
             try:
                 r = requests.post("https://api.trakt.tv/oauth/token", json={"code": pin, "client_id": c_id, "client_secret": c_secret, "redirect_uri": "urn:ietf:wg:oauth:2.0:oob", "grant_type": "authorization_code"}, headers={'Content-Type': 'application/json'}, timeout=10)
                 if r.status_code == 200:
                     data = r.json()
                     save_trakt_token_data(data['access_token'], data['refresh_token'], c_id, c_secret)
+                    logger.info("✅ [Trakt] Authentification réussie et tokens sauvegardés.")
                     flash("Tokens Trakt générés avec succès !")
                 else: 
-                    logger.error(f"Erreur réponse Trakt OAuth: {r.text}")
+                    logger.error(f"❌ [Trakt] Erreur OAuth: {r.text}")
                     flash(f"Erreur Trakt : {r.text}")
             except Exception as e: 
-                logger.error(f"Exception lors de l'auth Trakt: {e}")
+                logger.error(f"❌ [Trakt] Exception: {e}")
                 flash(f"Erreur : {str(e)}")
         return redirect(url_for('web.settings'))
     return render_template('settings.html', version=current_app.config['APP_VERSION'], conf=get_app_config(), trakt_cfg=load_trakt_config())
@@ -89,29 +90,36 @@ def web_play_route() -> Response:
     show_action = request.form.get('show_action', 'resume')
     
     if media_type == 'movie' and query:
+        logger.info(f"🎬 [Web] Recherche TMDB pour le film : '{query}'...")
         mid, title, _ = search_tmdb_movie(query)
         if mid:
+            logger.info(f"🍿 [Web] Lancement du film '{title}' ({'manuel' if force_select else 'auto'})")
             executor.submit(worker_process, get_playback_url(mid, "movie", force_select=force_select))
             flash(f"🎬 Lancement : {title}")
     elif media_type == 'show' and query:
+        logger.info(f"📺 [Web] Recherche TMDB pour la série : '{query}'...")
         mid, title = search_tmdb_show(query)
         if mid:
             if show_action == 'specific':
                 s = request.form.get('season', type=int, default=1)
                 e = request.form.get('episode', type=int, default=1)
+                logger.info(f"🍿 [Web] Lancement série '{title}' (Saison {s} Épisode {e})")
                 executor.submit(worker_process, get_playback_url(mid, "episode", s, e, force_select))
                 flash(f"📺 Lancement : {title} S{s}E{e}")
             elif show_action == 'latest':
                 ls, le = get_tmdb_last_aired(mid)
                 if ls and le:
+                    logger.info(f"🍿 [Web] Lancement série '{title}' (Dernier Épisode S{ls}E{le})")
                     executor.submit(worker_process, get_playback_url(mid, "episode", ls, le, force_select))
                     flash(f"📺 Lancement dernier : {title} S{ls}E{le}")
             else:
                 ts, te = get_trakt_next_episode(mid)
                 if ts and te:
+                    logger.info(f"🍿 [Web] Reprise série via Trakt '{title}' (Saison {ts} Épisode {te})")
                     executor.submit(worker_process, get_playback_url(mid, "episode", ts, te, force_select))
                     flash(f"📺 Reprise : {title} S{ts}E{te}")
                 else:
+                    logger.info(f"🍿 [Web] Pas d'historique Trakt pour '{title}', lancement S1E1.")
                     executor.submit(worker_process, get_playback_url(mid, "episode", 1, 1, force_select))
                     flash(f"📺 Aucun historique Trakt. Lancement S1E1 : {title}")
     return redirect(url_for('web.dashboard'))
@@ -121,6 +129,7 @@ def wake_device_route() -> Response:
     conf = get_app_config()
     mac = conf.get("SHIELD_MAC")
     ip = conf.get("SHIELD_IP")
+    logger.info(f"⚡ [Système] Demande de réveil envoyée vers {ip}")
     if mac: 
         try: send_magic_packet(mac)
         except Exception as e: logger.error(f"Erreur WoL signal: {e}")
@@ -134,6 +143,7 @@ def wake_device_route() -> Response:
 def shutdown_device_route() -> Response:
     conf = get_app_config()
     ip, target = conf.get("SHIELD_IP"), conf.get("TARGET_OS")
+    logger.info(f"💤 [Système] Demande de mise en veille envoyée vers {ip} ({target})")
     if target == "android" and ip:
         from modules.adb import send_adb_command
         res = send_adb_command(ip, "input keyevent SLEEP")
@@ -156,6 +166,7 @@ def shutdown_device_route() -> Response:
 def start_kodi_route() -> Response:
     conf = get_app_config()
     ip = conf.get("SHIELD_IP")
+    logger.info(f"▶️ [Système] Lancement de l'application Kodi sur {ip}")
     if conf.get("TARGET_OS") == "android" and ip:
         from modules.adb import send_adb_command
         send_adb_command(ip, "am start -n org.xbmc.kodi/.Splash")
@@ -166,6 +177,7 @@ def start_kodi_route() -> Response:
 def stop_kodi_route() -> Response:
     conf = get_app_config()
     ip = conf.get("SHIELD_IP")
+    logger.info(f"⏹️ [Système] Arrêt de l'application Kodi sur {ip}")
     if is_kodi_responsive():
         try:
             auth = (conf.get("KODI_USER"), conf.get("KODI_PASS")) if conf.get("KODI_USER") else None
@@ -183,6 +195,7 @@ def stop_kodi_route() -> Response:
 def test_connection_route() -> Response:
     conf = get_app_config()
     ip, target = conf.get("SHIELD_IP"), conf.get("TARGET_OS")
+    logger.info(f"🔌 [Système] Test de connexion ({target}) vers {ip}...")
     if target == "android" and ip:
         from modules.adb import send_adb_command
         res = send_adb_command(ip, "echo ADB_OK")
@@ -203,6 +216,7 @@ def test_connection_route() -> Response:
 
 @web_bp.route('/trigger-patch', methods=['POST'])
 def trigger_patch_route() -> Response:
+    logger.info("🔧 [Web] Lancement manuel du Patcher depuis le dashboard.")
     executor.submit(check_and_patch_fenlight)
     flash("Processus de patch lancé.")
     return redirect(url_for('web.dashboard'))
