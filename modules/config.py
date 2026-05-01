@@ -6,6 +6,7 @@ import sys
 import time
 import requests
 import secrets
+import platform
 from typing import Dict, Any, Optional
 
 DATA_DIR: str = "/app/data"
@@ -27,12 +28,10 @@ logging.basicConfig(
     ]
 )
 
-# --- NOUVEAU : Réduction du bruit des bibliothèques tierces ---
-# On les force en WARNING pour qu'elles ne polluent pas le mode DEBUG
+# --- Réduction du bruit des bibliothèques tierces ---
 logging.getLogger("adb_shell").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("paramiko").setLevel(logging.WARNING)
-# --------------------------------------------------------------
 
 logger: logging.Logger = logging.getLogger("KodiMiddleware")
 
@@ -157,3 +156,44 @@ def get_secret_key() -> str:
         logger.info("🔑 Flask Secret Key générée et sauvegardée dans config.json pour persistance.")
     
     return new_key
+
+def log_startup_banner(version: str) -> None:
+    """Affiche une bannière ASCII et le récapitulatif technique au démarrage."""
+    conf = get_app_config()
+    trakt = load_trakt_config()
+    
+    def mask(s: str) -> str:
+        return f"{s[:4]}****{s[-4:]}" if len(s) > 8 else "****" if s else "NON DÉFINI"
+
+    banner = f"""
+  __  __        _____ _                                
+ |  \/  |_   _ / ____(_)                               
+ | \  / | | | | |     _ _ __   ___ _ __ ___   __ _ 
+ | |\/| | |_| | |    | | '_ \ / _ \ '_ ` _ \ / _` |
+ | |  | |\__, | |____| | | | |  __/ | | | | | (_| |
+ |_|  |_| \__, |\_____|_|_| |_|\___|_| |_| |_|\__,_|
+          |___/                                        
+    
+    🚀 VERSION      : v{version}
+    👨‍💻 AUTEUR       : Richard Perez
+    📁 DÉPÔT GIT    : https://github.com/ripleyxlr8/my-cinema-amazon-skill-for-kodi
+    🐍 PYTHON       : {platform.python_version()}
+    🐳 ENVIRONNEMENT : {"Docker (Linux)" if os.path.exists('/.dockerenv') else platform.system()}
+    
+    [ PARAMÈTRES RÉSEAU ]
+    🌐 CIBLE IP     : {conf.get('SHIELD_IP')}
+    🖥️ OS CIBLE     : {conf.get('TARGET_OS').upper()}
+    📶 PORT KODI    : {conf.get('KODI_PORT')}
+    🔌 MAC ADDR     : {conf.get('SHIELD_MAC') or 'Non spécifiée'}
+    
+    [ ÉTAT DES SERVICES ]
+    🎬 TMDB KEY     : {mask(conf.get('TMDB_API_KEY'))}
+    🍿 TRAKT AUTH   : {'ACTIVÉ' if trakt.get('access_token') else 'MANQUANT'}
+    🛡️ ALEXA SKILL  : {mask(conf.get('ALEXA_SKILL_ID'))}
+    🛠️ LOG LEVEL    : {'DEBUG' if DEBUG_MODE else 'INFO'}
+    
+    --- Démarrage de MyCinema en cours... ---
+    """
+    # On utilise print pour que ça ressorte bien dans la console Docker au démarrage
+    print(banner)
+    logger.info(f"Système MyCinema initialisé avec succès (v{version}).")
