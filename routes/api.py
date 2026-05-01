@@ -2,6 +2,7 @@
 import os
 import time
 import json
+import logging
 from flask import Blueprint, request, jsonify
 from flask.wrappers import Response
 from typing import Union, Tuple, Dict, Any, Optional
@@ -16,7 +17,6 @@ api_bp = Blueprint('api', __name__)
 
 @api_bp.before_request
 def require_api_auth():
-    # L'endpoint webhook d'Alexa a sa propre authentification par signature
     if request.endpoint == 'api.alexa_handler':
         return
         
@@ -47,33 +47,6 @@ def api_logs() -> Response:
         logger.error(f"Erreur lecture logs API: {e}")
         return jsonify({"logs": f"Erreur : {e}"})
 
-@api_bp.route('/api/logs/stream', methods=['GET'])
-def api_logs_stream():
-    def generate():
-        if not os.path.exists(LOG_FILE):
-            yield f"data: {json.dumps({'logs': 'Aucun log disponible.', 'clear': True})}\n\n"
-            while True:
-                time.sleep(5)
-                yield ": keepalive\n\n"
-        
-        with open(LOG_FILE, 'r', encoding='utf-8') as f:
-            lines = f.readlines()[-150:]
-            yield f"data: {json.dumps({'logs': ''.join(lines), 'clear': True})}\n\n"
-            while True:
-                pos = f.tell()
-                line = f.readline()
-                if not line:
-                    if os.path.getsize(LOG_FILE) < pos:
-                        # Si le fichier a été tronqué (effacé), on se replace au début
-                        f.seek(0, 0)
-                        yield f"data: {json.dumps({'logs': '', 'clear': True})}\n\n"
-                    else:
-                        time.sleep(0.5)
-                    continue
-                yield f"data: {json.dumps({'logs': line, 'clear': False})}\n\n"
-                
-    return Response(generate(), mimetype='text/event-stream')
-
 @api_bp.route('/api/logs/clear', methods=['POST'])
 def clear_logs() -> Response:
     try:
@@ -83,6 +56,40 @@ def clear_logs() -> Response:
     except Exception as e:
         logger.error(f"Erreur effacement logs: {e}")
         return jsonify({"error": str(e)}), 500
+
+# --- NOUVEL ENDPOINT : Modification du niveau de log à la volée ---
+@api_bp.route('/api/logs/level', methods=['POST'])
+def set_log_level() -> Response:
+    data = request.get_json()
+    level_str = data.get('level', 'INFO').upper()
+    
+    level_map = {
+        'VERBOSE': logging.DEBUG,
+        'DEBUG': logging.DEBUG,
+        'INFO': logging.INFO,
+        'WARNING': logging.WARNING,
+        'ERROR': logging.ERROR
+    }
+    
+    if level_str in level_map:
+        new_level = level_map[level_str]
+        
+        # Modification du logger principal de l'application
+        logger.setLevel(new_level)
+        logging.getLogger().setLevel(new_level)
+        
+        # Gestion intelligente du bruit réseau (ADB, SSH, HTTP)
+        # Si VERBOSE est sélectionné, on active le DEBUG sur TOUT le système
+        third_party_level = logging.DEBUG if level_str == 'VERBOSE' else logging.WARNING
+        logging.getLogger("adb_shell").setLevel(third_party_level)
+        logging.getLogger("urllib3").setLevel(third_party_level)
+        logging.getLogger("paramiko").setLevel(third_party_level)
+        
+        logger.info(f"🔄 [Système] Niveau de log modifié à la volée : {level_str}")
+        return jsonify({"status": "success", "level": level_str})
+    else:
+        return jsonify({"error": "Niveau invalide"}), 400
+# -------------------------------------------------------------------
 
 @api_bp.route('/api/status', methods=['GET'])
 def api_status() -> Response:
@@ -118,7 +125,6 @@ def alexa_handler() -> Union[Tuple[Response, int], Response]:
     lang = req_data['request'].get('locale', 'fr-FR').split('-')[0]
     attributes = req_data.get('session', {}).get('attributes', {})
 
-    # Correction pour Amazon Alexa : Ne jamais renvoyer de réponse texte sur SessionEndedRequest
     if req_type == "SessionEndedRequest":
         return jsonify({}), 200
 
