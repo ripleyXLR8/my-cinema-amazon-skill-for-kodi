@@ -2,7 +2,7 @@
 import os
 import paramiko
 import requests
-from flask import Blueprint, request, jsonify, render_template, redirect, url_for, flash, send_from_directory
+from flask import Blueprint, request, jsonify, render_template, redirect, url_for, flash, send_from_directory, current_app
 from flask.wrappers import Response
 from typing import Union, Tuple
 from wakeonlan import send_magic_packet
@@ -13,7 +13,6 @@ from modules.patcher import PATCH_STATE, check_and_patch_fenlight
 from modules.extensions import executor
 
 web_bp = Blueprint('web', __name__)
-APP_VERSION: str = "2.4.12"
 
 @web_bp.before_request
 def require_auth():
@@ -38,7 +37,7 @@ def require_auth():
 def dashboard() -> str:
     conf = get_app_config()
     device_ok = is_device_online(conf.get('SHIELD_IP'))
-    return render_template('dashboard.html', version=APP_VERSION, device_ok=device_ok,
+    return render_template('dashboard.html', version=current_app.config['APP_VERSION'], device_ok=device_ok,
         device_awake=is_device_awake(conf.get('SHIELD_IP'), conf.get('TARGET_OS')) if device_ok else False,
         kodi_ok=is_kodi_responsive(), shield_ip=conf.get('SHIELD_IP'), target_os=conf.get('TARGET_OS'),
         tmdb_ok=bool(conf.get('TMDB_API_KEY')), trakt_ok=bool(load_trakt_token()), patch_state=PATCH_STATE,
@@ -72,11 +71,11 @@ def settings() -> Union[str, Response]:
                 logger.error(f"Exception lors de l'auth Trakt: {e}")
                 flash(f"Erreur : {str(e)}")
         return redirect(url_for('web.settings'))
-    return render_template('settings.html', version=APP_VERSION, conf=get_app_config(), trakt_cfg=load_trakt_config())
+    return render_template('settings.html', version=current_app.config['APP_VERSION'], conf=get_app_config(), trakt_cfg=load_trakt_config())
 
 @web_bp.route('/health')
 def health() -> Tuple[Response, int]: 
-    return jsonify({"status": "healthy", "version": APP_VERSION}), 200
+    return jsonify({"status": "healthy", "version": current_app.config['APP_VERSION']}), 200
 
 @web_bp.route('/icon.png')
 def serve_icon() -> Response: 
