@@ -2,12 +2,14 @@
 import os
 import time
 import paramiko
+import requests
 from datetime import datetime
 from typing import Dict, Any
-from modules.config import logger, get_app_config, DATA_DIR
+from modules.config import logger, get_app_config, DATA_DIR, get_kodi_url
 
 PATCH_STATE: Dict[str, str] = {"status": "Non vérifié", "version": "Inconnue", "last_check": "Jamais"}
 FENLIGHT_LOCAL_TEMP: str = os.path.join(DATA_DIR, "kodi_utils_temp.py")
+LAST_VERSION_FILE: str = os.path.join(os.path.dirname(__file__), "..", "scripts", ".last_fenlight_version")
 
 def check_and_patch_fenlight() -> None:
     global PATCH_STATE
@@ -16,6 +18,36 @@ def check_and_patch_fenlight() -> None:
     if not ip: return
     
     PATCH_STATE["last_check"] = datetime.now().strftime("%H:%M:%S")
+
+    # --- NOUVEAU : Récupération de la version de Fen Light ---
+    # 1. Fallback: Lecture du dernier fichier de version connu (généré par le llm_updater)
+    if os.path.exists(LAST_VERSION_FILE):
+        try:
+            with open(LAST_VERSION_FILE, 'r', encoding='utf-8') as f:
+                PATCH_STATE["version"] = f.read().strip()
+        except Exception:
+            pass
+
+    # 2. Précision: Interrogation de Kodi en direct s'il est allumé (Écrase le fallback)
+    try:
+        url = get_kodi_url(conf)
+        if url:
+            auth = (conf.get("KODI_USER"), conf.get("KODI_PASS")) if conf.get("KODI_USER") else None
+            payload = {
+                "jsonrpc": "2.0", 
+                "method": "Addons.GetAddonDetails", 
+                "params": {"addonid": "plugin.video.fenlight", "properties": ["version"]}, 
+                "id": 1
+            }
+            r = requests.post(url, json=payload, auth=auth, timeout=2)
+            if r.status_code == 200:
+                ver = r.json().get('result', {}).get('addon', {}).get('version')
+                if ver:
+                    PATCH_STATE["version"] = ver
+    except Exception:
+        pass # Si Kodi est éteint/injoignable, on conserve silencieusement la version du fallback
+    # ---------------------------------------------------------
+
     content: str = ""
     
     try:
@@ -49,8 +81,6 @@ def check_and_patch_fenlight() -> None:
         return
 
     # Signatures de patch pour le fichier kodi_utils.py (v2.2.02)
-    # Les fonctions 'player_check' et 'external_playback_check' continuent d'utiliser les mêmes conditions
-    # pour bloquer la lecture externe. Les chaînes de remplacement existantes restent efficaces.
     T1_O = "if mode == 'playback.%s' % playback_key():"
     T1_P = "if True: # mode == 'playback.%s' % playback_key():"
     T2_O = "if not playback_key() in params:"
