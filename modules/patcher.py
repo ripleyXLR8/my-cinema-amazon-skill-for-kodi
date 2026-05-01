@@ -18,9 +18,9 @@ def check_and_patch_fenlight() -> None:
     if not ip: return
     
     PATCH_STATE["last_check"] = datetime.now().strftime("%H:%M:%S")
+    logger.info(f"🔎 [Patcher] Vérification de l'état de Fen Light sur l'appareil ({ip})...")
 
-    # --- NOUVEAU : Récupération de la version de Fen Light ---
-    # 1. Fallback: Lecture du dernier fichier de version connu (généré par le llm_updater)
+    # 1. Fallback: Lecture du dernier fichier de version connu
     if os.path.exists(LAST_VERSION_FILE):
         try:
             with open(LAST_VERSION_FILE, 'r', encoding='utf-8') as f:
@@ -28,7 +28,7 @@ def check_and_patch_fenlight() -> None:
         except Exception:
             pass
 
-    # 2. Précision: Interrogation de Kodi en direct s'il est allumé (Écrase le fallback)
+    # 2. Précision: Interrogation de Kodi en direct s'il est allumé
     try:
         url = get_kodi_url(conf)
         if url:
@@ -45,8 +45,7 @@ def check_and_patch_fenlight() -> None:
                 if ver:
                     PATCH_STATE["version"] = ver
     except Exception:
-        pass # Si Kodi est éteint/injoignable, on conserve silencieusement la version du fallback
-    # ---------------------------------------------------------
+        pass 
 
     content: str = ""
     
@@ -56,10 +55,10 @@ def check_and_patch_fenlight() -> None:
             device = get_adb_device(ip)
             if not device:
                 PATCH_STATE["status"] = "Erreur connexion ADB"
+                logger.error("❌ [Patcher] Impossible de se connecter via ADB pour vérifier le patch.")
                 return
                 
             if os.path.exists(FENLIGHT_LOCAL_TEMP): os.remove(FENLIGHT_LOCAL_TEMP)
-            # Pull via l'API native Python
             device.pull("/sdcard/Android/data/org.xbmc.kodi/files/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py", FENLIGHT_LOCAL_TEMP)
             device.close()
             
@@ -76,11 +75,11 @@ def check_and_patch_fenlight() -> None:
                 content = f.read().decode('utf-8')
             ssh.close()
     except Exception as e:
-        logger.error(f"Erreur connexion ou lecture pour le patch ({target}): {e}")
+        logger.error(f"❌ [Patcher] Erreur de lecture pour le patch ({target}): {e}")
         PATCH_STATE["status"] = "Erreur connexion"
         return
 
-    # Signatures de patch pour le fichier kodi_utils.py (v2.2.02)
+    # Signatures de patch pour le fichier kodi_utils.py
     T1_O = "if mode == 'playback.%s' % playback_key():"
     T1_P = "if True: # mode == 'playback.%s' % playback_key():"
     T2_O = "if not playback_key() in params:"
@@ -88,9 +87,11 @@ def check_and_patch_fenlight() -> None:
     
     if T1_P in content and T2_P in content:
         PATCH_STATE["status"] = "Patché"
+        logger.info(f"✅ [Patcher] Fen Light v{PATCH_STATE['version']} est déjà parfaitement patché.")
         return
 
     if T1_O in content or T2_O in content:
+        logger.info(f"⚠️ [Patcher] Sécurités détectées sur Fen Light v{PATCH_STATE['version']}. Application du patch en cours...")
         new_content = content.replace(T1_O, T1_P).replace(T2_O, T2_P)
         try:
             if target == "android":
@@ -110,8 +111,9 @@ def check_and_patch_fenlight() -> None:
                     f.write(new_content)
                 ssh.close()
             PATCH_STATE["status"] = "Patché"
+            logger.info("🚀 [Patcher] Patch appliqué avec succès ! La lecture externe est maintenant autorisée.")
         except Exception as e: 
-            logger.error(f"Erreur écriture du patch Fen Light ({target}): {e}")
+            logger.error(f"❌ [Patcher] Erreur lors de l'écriture du patch ({target}): {e}")
             PATCH_STATE["status"] = "Erreur écriture"
 
 def patcher_scheduler() -> None:
