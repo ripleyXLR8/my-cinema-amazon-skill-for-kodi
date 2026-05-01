@@ -26,6 +26,14 @@ logging.basicConfig(
         logging.StreamHandler(sys.stdout)
     ]
 )
+
+# --- NOUVEAU : Réduction du bruit des bibliothèques tierces ---
+# On les force en WARNING pour qu'elles ne polluent pas le mode DEBUG
+logging.getLogger("adb_shell").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+logging.getLogger("paramiko").setLevel(logging.WARNING)
+# --------------------------------------------------------------
+
 logger: logging.Logger = logging.getLogger("KodiMiddleware")
 
 TRANSLATIONS: Dict[str, Any] = {}
