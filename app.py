@@ -7,14 +7,14 @@ import threading
 import os
 
 # Imports locaux (Initialisation globale)
-from modules.config import load_translations, get_secret_key
+from modules.config import load_translations, get_secret_key, log_startup_banner
 from modules.patcher import patcher_scheduler
 
 # Imports des Blueprints
 from routes.web import web_bp
 from routes.api import api_bp
 
-APP_VERSION: str = "2.6.91"
+APP_VERSION: str = "2.6.92"
 
 app = Flask(__name__)
 # Génère une clé sécurisée ou utilise la clé persistante générée au premier démarrage
@@ -33,6 +33,7 @@ app.register_blueprint(api_bp)
 
 # Ces fonctions s'exécutent dès que Gunicorn importe le fichier app.py
 load_translations()
+log_startup_banner(APP_VERSION)
 
 # Sécurité : on s'assure de ne pas lancer plusieurs threads si l'app est rechargée
 if not any(thread.name == "PatcherThread" for thread in threading.enumerate()):
