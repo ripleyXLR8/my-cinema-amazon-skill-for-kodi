@@ -206,7 +206,7 @@
             btn.disabled = true;
             try {
                 await fetch('/api/logs/clear', { method: 'POST' });
-                document.getElementById('logViewer').innerText = '';
+                document.getElementById('logViewer').innerHTML = 'Aucun log disponible.';
             } catch (e) {
                 console.error("Erreur lors de l'effacement", e);
             } finally {
@@ -250,6 +250,51 @@
         }
     }
 
+    // Récupération classique des logs (Améliorée)
+    async function fetchLogs() {
+        try {
+            const response = await fetch('/api/logs');
+            const data = await response.json();
+            
+            if (data.logs && data.logs.trim() !== "") {
+                // Échapper le HTML pour éviter les injections
+                const escapeHtml = (unsafe) => {
+                    return unsafe
+                         .replace(/&/g, "&amp;")
+                         .replace(/</g, "&lt;")
+                         .replace(/>/g, "&gt;")
+                         .replace(/"/g, "&quot;")
+                         .replace(/'/g, "&#039;");
+                };
+
+                // Remplacer les "\n" littéraux de l'ADB par de vrais retours à la ligne
+                let rawLogs = data.logs.replace(/\\n/g, '\n');
+                let safeLogs = escapeHtml(rawLogs);
+                
+                // Coloriser en fonction du niveau
+                let formattedLogs = safeLogs.split('\n').map(line => {
+                    if (line.includes('[ERROR]')) return `<span class="text-red-400 font-bold">${line}</span>`;
+                    if (line.includes('[WARNING]')) return `<span class="text-yellow-400">${line}</span>`;
+                    if (line.includes('[INFO]')) return `<span class="text-blue-400">${line}</span>`;
+                    if (line.includes('[DEBUG]')) return `<span class="text-slate-500">${line}</span>`;
+                    return line;
+                }).join('\n');
+
+                // Utilisation de innerHTML pour que les balises <span> soient rendues
+                logViewer.innerHTML = formattedLogs;
+            } else {
+                logViewer.innerHTML = "Aucun log disponible.";
+            }
+            
+            // Défilement automatique
+            if (!isUserScrolling) {
+                logViewer.scrollTop = logViewer.scrollHeight;
+            }
+        } catch (e) {
+            console.error("Erreur de récupération des logs", e);
+        }
+    }
+
     // --- Logique d'affichage dynamique pour les séries ---
     const mediaTypeSelect = document.getElementById('media_type_select');
     const showOptionsContainer = document.getElementById('show_options_container');
@@ -275,9 +320,9 @@
     });
     // -------------------------------------------------------------
 
-    // Gestion intelligente du polling et du flux SSE (Server-Sent Events)
+    // Gestion intelligente du polling
     let statusInterval;
-    let eventSource;
+    let logsInterval;
 
     function startPolling() {
         stopPolling();
@@ -286,39 +331,17 @@
         fetchStatus();
         statusInterval = setInterval(fetchStatus, 5000);
 
-        // Configuration du Flux SSE pour les logs (Server-Sent Events)
-        if (!eventSource || eventSource.readyState === EventSource.CLOSED) {
-            eventSource = new EventSource('/api/logs/stream');
-            
-            eventSource.onmessage = function(event) {
-                const data = JSON.parse(event.data);
-                
-                if (data.clear) {
-                    logViewer.innerText = data.logs || (data.logs === "" ? "" : "Aucun log disponible.");
-                } else {
-                    logViewer.innerText += data.logs;
-                }
-                
-                // Défilement automatique
-                if (!isUserScrolling) {
-                    logViewer.scrollTop = logViewer.scrollHeight;
-                }
-            };
-            
-            eventSource.onerror = function(err) {
-                console.error("Erreur EventSource (Flux de logs), reconnexion auto en cours...", err);
-            };
-        }
+        // Polling des logs toutes les 3 secondes
+        fetchLogs();
+        logsInterval = setInterval(fetchLogs, 3000);
     }
 
     function stopPolling() {
         clearInterval(statusInterval);
-        if (eventSource) {
-            eventSource.close();
-        }
+        clearInterval(logsInterval);
     }
 
-    // Arrêt des requêtes et fermeture du SSE si l'onglet n'est pas actif pour économiser le Gunicorn
+    // Arrêt des requêtes si l'onglet n'est pas actif
     document.addEventListener("visibilitychange", () => {
         if (document.hidden) {
             stopPolling();
