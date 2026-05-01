@@ -21,6 +21,9 @@ app = Flask(__name__)
 # Génère une clé sécurisée ou utilise la clé persistante générée au premier démarrage
 app.secret_key = get_secret_key()
 
+# Injection de la version pour les Blueprints
+app.config['APP_VERSION'] = APP_VERSION
+
 # Enregistrement des Blueprints
 app.register_blueprint(web_bp)
 app.register_blueprint(api_bp)
