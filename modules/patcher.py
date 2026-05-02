@@ -80,6 +80,7 @@ def check_and_patch_fenlight() -> None:
         return
 
     # Signatures de patch pour le fichier kodi_utils.py
+    # Ces signatures restent valides pour la version 2.2.03 de kodi_utils.py
     T1_O = "if mode == 'playback.%s' % playback_key():"
     T1_P = "if True: # mode == 'playback.%s' % playback_key():"
     T2_O = "if not playback_key() in params:"
