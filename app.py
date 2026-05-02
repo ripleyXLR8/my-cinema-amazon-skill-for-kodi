@@ -14,7 +14,7 @@ from modules.patcher import patcher_scheduler
 from routes.web import web_bp
 from routes.api import api_bp
 
-APP_VERSION: str = "2.6.92"
+APP_VERSION: str = "2.6.93"
 
 app = Flask(__name__)
 # Génère une clé sécurisée ou utilise la clé persistante générée au premier démarrage
