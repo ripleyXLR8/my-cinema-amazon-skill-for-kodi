@@ -57,6 +57,13 @@ def check_and_patch_fenlight() -> None:
                 logger.error("❌ [Patcher] Impossible de se connecter via ADB pour vérifier le patch.")
                 return
                 
+            present = adb_run(ip, lambda d: d.shell("ls /sdcard/Android/data/org.xbmc.kodi/files/.kodi/addons/plugin.video.fenlight/addon.xml >/dev/null 2>&1 && echo YES || echo NO"), "test Fen Light")
+            if present is not None and "NO" in present:
+                PATCH_STATE["status"] = "Fen Light non installé"
+                PATCH_STATE["version"] = "-"
+                logger.info("ℹ️ [Patcher] Fen Light n'est pas installé sur l'appareil : rien à patcher.")
+                return
+
             if os.path.exists(FENLIGHT_LOCAL_TEMP): os.remove(FENLIGHT_LOCAL_TEMP)
             adb_run(ip, lambda d: d.pull("/sdcard/Android/data/org.xbmc.kodi/files/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py", FENLIGHT_LOCAL_TEMP), "pull kodi_utils.py")
             
