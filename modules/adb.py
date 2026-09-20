@@ -103,19 +103,21 @@ def get_adb_device(ip: str) -> Optional[AdbDeviceTcp]:
     return None
 
 def adb_run(ip: str, action: Callable[[AdbDeviceTcp], Any], label: str = "") -> Any:
-    """Exécute action(device) sur la connexion partagée, avec une reconnexion si elle est morte."""
-    for attempt in (1, 2):
-        device = get_adb_device(ip)
-        if not device:
-            return None
-        with _cmd_lock:
-            try:
-                return action(device)
-            except Exception as e:
-                _drop_device()
-                if attempt == 2:
-                    ADB_STATE.update(status="unreachable", detail=str(e))
-                    logger.error(f"Erreur d'exécution ADB {label} sur {ip}: {e}")
+    """Exécute action(device) sur la connexion partagée.
+
+    L'action n'est JAMAIS rejouée après un échec : une commande dont la réponse tarde (délai dépassé)
+    peut très bien être en cours sur l'appareil, et la relancer l'exécuterait deux fois.
+    Seule la connexion est rétablie, pour l'appel suivant.
+    """
+    device = get_adb_device(ip)
+    if not device:
+        return None
+    with _cmd_lock:
+        try:
+            return action(device)
+        except Exception as e:
+            _drop_device()
+            logger.error(f"Erreur d'exécution ADB {label} sur {ip}: {e}")
     return None
 
 def send_adb_command(ip: str, command: str) -> Optional[str]:
