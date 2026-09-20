@@ -51,16 +51,14 @@ def check_and_patch_fenlight() -> None:
     
     try:
         if target == "android":
-            from modules.adb import get_adb_device
-            device = get_adb_device(ip)
-            if not device:
-                PATCH_STATE["status"] = "Erreur connexion ADB"
+            from modules.adb import get_adb_device, adb_run, ADB_STATE
+            if not get_adb_device(ip):
+                PATCH_STATE["status"] = "ADB non autorisé (voir la TV)" if ADB_STATE["status"] == "unauthorized" else "Erreur connexion ADB"
                 logger.error("❌ [Patcher] Impossible de se connecter via ADB pour vérifier le patch.")
                 return
                 
             if os.path.exists(FENLIGHT_LOCAL_TEMP): os.remove(FENLIGHT_LOCAL_TEMP)
-            device.pull("/sdcard/Android/data/org.xbmc.kodi/files/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py", FENLIGHT_LOCAL_TEMP)
-            device.close()
+            adb_run(ip, lambda d: d.pull("/sdcard/Android/data/org.xbmc.kodi/files/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py", FENLIGHT_LOCAL_TEMP), "pull kodi_utils.py")
             
             if os.path.exists(FENLIGHT_LOCAL_TEMP):
                 with open(FENLIGHT_LOCAL_TEMP, 'r', encoding='utf-8') as f: content = f.read()
@@ -98,12 +96,8 @@ def check_and_patch_fenlight() -> None:
         try:
             if target == "android":
                 with open(FENLIGHT_LOCAL_TEMP, 'w', encoding='utf-8') as f: f.write(new_content)
-                from modules.adb import get_adb_device
-                device = get_adb_device(ip)
-                if device:
-                    device.push(FENLIGHT_LOCAL_TEMP, "/sdcard/Android/data/org.xbmc.kodi/files/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py")
-                    device.close()
-                else:
+                from modules.adb import adb_run
+                if adb_run(ip, lambda d: d.push(FENLIGHT_LOCAL_TEMP, "/sdcard/Android/data/org.xbmc.kodi/files/.kodi/addons/plugin.video.fenlight/resources/lib/modules/kodi_utils.py") or True, "push kodi_utils.py") is None:
                     raise Exception("Impossible de se reconnecter pour le push ADB.")
             else:
                 ssh = paramiko.SSHClient()

@@ -197,9 +197,10 @@ def test_connection_route() -> Response:
     ip, target = conf.get("SHIELD_IP"), conf.get("TARGET_OS")
     logger.info(f"🔌 [Système] Test de connexion ({target}) vers {ip}...")
     if target == "android" and ip:
-        from modules.adb import send_adb_command
+        from modules.adb import send_adb_command, ADB_STATE
         res = send_adb_command(ip, "echo ADB_OK")
         if res and "ADB_OK" in res: flash("Test ADB réussi ✅")
+        elif ADB_STATE["status"] == "unauthorized": flash("ADB non autorisé 🔐 : acceptez la fenêtre « Autoriser le débogage USB ? » sur la TV (cochez « Toujours autoriser »), puis relancez le test.")
         else: flash("Échec ADB ❌")
     elif target == "libreelec" and ip:
         try:
