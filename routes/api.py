@@ -9,7 +9,6 @@ from typing import Union, Tuple, Dict, Any, Optional
 
 from modules.config import logger, get_app_config, get_text, LOG_FILE
 from modules.logic import is_device_online, is_device_awake, is_kodi_responsive, search_tmdb_movie, search_tmdb_show, get_trakt_next_episode, get_tmdb_last_aired, check_episode_exists, get_playback_url, worker_process, get_kodi_active_player, get_kodi_player_item, change_source_worker
-from modules.patcher import check_and_patch_fenlight
 from modules.adb import ADB_STATE
 from modules.extensions import executor
 from ask_sdk_webservice_support.verifier import RequestVerifier
@@ -139,11 +138,7 @@ def alexa_handler() -> Union[Tuple[Response, int], Response]:
         force_select = True if slots.get('SourceMode', {}).get('value') else attributes.get('force_select', False)
         manual_msg = get_text("manual_select", lang) if force_select else ""
 
-        if intent_name == "TriggerPatcherIntent":
-            executor.submit(check_and_patch_fenlight)
-            return jsonify(build_res(get_text("patcher_triggered", lang)))
-
-        elif intent_name == "ChangeSourceIntent":
+        if intent_name == "ChangeSourceIntent":
             if not is_kodi_responsive(): return jsonify(build_res(get_text("kodi_offline", lang)))
             pid = get_kodi_active_player()
             item = get_kodi_player_item(pid) if pid is not None else None

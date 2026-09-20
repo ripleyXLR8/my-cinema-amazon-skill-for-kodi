@@ -15,7 +15,7 @@
 
 **This container can be installed directly using docker or on your Unraid Server directly through Community Applications (CA).**
 
-This dockerized solution acts as a middleware bridge, featuring a modern **Web UI Control Panel**, intelligent power management, and an automated patcher to ensure Fen Light remains compatible with external playback calls.
+This dockerized solution acts as a middleware bridge, featuring a modern **Web UI Control Panel** and intelligent power management.
 
 ## 🎥 Demo
 
@@ -25,13 +25,12 @@ https://github.com/user-attachments/assets/da996a8d-55bf-4b13-b84a-542da01ceb5d
 
 ## ✨ Key Features
 
-* **🖥️ Web UI Control Panel:** A real-time dashboard to monitor your Kodi connection, TMDB API status, Fen Light patcher health, and Trakt.tv synchronization.
+* **🖥️ Web UI Control Panel:** A real-time dashboard to monitor your Kodi connection, TMDB API status and Trakt.tv synchronization.
 * **🔑 Visual Trakt Setup:** Easily link your Trakt.tv account through a dedicated web wizard—no manual command line required.
 * **🗣️ Multi-Language Support:** Full native support for **English** and **French** commands and responses.
 * **⚡ Smart Power Management:** Automatically handles device wake-up (WoL/ADB for Shield) or system commands (SSH for LibreELEC) before playback.
 * **🧠 Trakt.tv Resume:** Ask Alexa to *"Resume [Show]"* to instantly play your *Next Up* episode based on your Trakt history.
 * **🔍 TMDB Integration:** Accurate identification of movies and TV shows with rich metadata support.
-* **🛠️ Fen Light Auto-Patcher:** A background service that automatically updates the *Fen Light* addon logic to allow external integration, surviving addon updates.
 * **🔒 Secure Webhook:** Cryptographic validation of Alexa requests to ensure only your authorized skill can control your media center.
 
 ## 📱 Platform Comparison
@@ -45,7 +44,6 @@ Here is a quick comparison of the features available on the different platform :
 | **Voice Control** | ✅ | ✅ |
 | **Trakt.tv Sync** | ✅ | ✅ |
 | **Web UI Dashboard** | ✅ | ✅ |
-| **Fen Light Auto-Patcher** | ✅ *(via ADB)* | ✅ *(via SSH)* |
 | **Wake-on-LAN Support** | ✅ | ❌ |
 | **HDMI-CEC TV Wake-up** | ✅ *(via Android)* | ✅ *(via JSON-RPC)* |
 
@@ -123,13 +121,6 @@ To bridge your voice commands to the backend, follow these steps in the [Alexa D
 | **Play Show** | *"Alexa, ask My Cinema to play The Witcher."* | *"Alexa, demande à Mon Cinéma de lancer The Witcher."* |
 | **Resume** | *"Alexa, ask My Cinema to resume Breaking Bad."* | *"Alexa, demande à Mon Cinéma de reprendre Breaking Bad."* |
 | **Manual Select** | *"Alexa, ask My Cinema to play Avatar **manually**."* | *"Alexa, demande à Mon Cinéma de lancer Avatar **avec choix**."* |
-
-## 🔧 Technical Details
-
-### The Fen Light Auto-Patcher
-Fen Light restricts external playback calls by default. This middleware includes a background thread that automatically patches the restrictive logic.
-* **On Android TV:** Uses ADB `pull` and `push` to modify the files on the internal `/sdcard` storage.
-* **On LibreELEC / OpenELEC:** Uses Python's `paramiko` library to establish an SSH/SFTP connection and patch the files on the Raspberry Pi's `/storage` partition.
 
 ## 🤖 Vibe Coding & Credits
 
