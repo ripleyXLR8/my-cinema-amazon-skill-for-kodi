@@ -1,3 +1,7 @@
+## [2.6.95] - 2026-09-20
+- 🔐 **ADB** : la demande d'autorisation reste affichée 120 s sur la TV (5 s auparavant : impossible à accepter), état « ADB non autorisé » visible dans le dashboard et les logs.
+- 🔌 **ADB** : connexion persistante et partagée (plus de nouvelle connexion toutes les 5 s), reconnexion automatique, accès sérialisé.
+
 ## [2.6.94] - 2026-05-05
 - 🤖 Vibe Coding : Adaptation automatique du patch de lecture externe pour Fen Light v2.2.04
 
