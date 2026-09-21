@@ -68,6 +68,7 @@ def get_app_config() -> Dict[str, str]:
         "KODI_PASS": os.getenv("KODI_PASS", "kodi"),
         "PLAYER_DEFAULT": os.getenv("PLAYER_DEFAULT", "fenlight_auto.json"),
         "PLAYER_SELECT": os.getenv("PLAYER_SELECT", "fenlight_select.json"),
+        "PROGRESS_ADDON": os.getenv("PROGRESS_ADDON", "plugin.video.pov"),
         "WEB_UI_USERNAME": os.getenv("WEB_UI_USERNAME", "admin"),
         "WEB_UI_PASSWORD": os.getenv("WEB_UI_PASSWORD", "admin")
     }

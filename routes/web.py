@@ -7,7 +7,7 @@ from flask.wrappers import Response
 from typing import Union, Tuple
 from wakeonlan import send_magic_packet
 
-from modules.config import logger, get_app_config, save_app_config, load_trakt_config, load_trakt_token, save_trakt_token_data, get_kodi_url
+from modules.config import logger, get_app_config, save_app_config, load_trakt_token, get_kodi_url
 from modules.logic import is_device_online, is_device_awake, is_kodi_responsive, search_tmdb_movie, search_tmdb_show, get_trakt_next_episode, get_tmdb_last_aired, get_playback_url, worker_process
 from modules.extensions import executor
 
@@ -34,10 +34,14 @@ def require_auth():
 def dashboard() -> str:
     conf = get_app_config()
     device_ok = is_device_online(conf.get('SHIELD_IP'))
+    if conf.get('TARGET_OS') == 'android' and conf.get('PROGRESS_ADDON'):
+        progress_source = conf['PROGRESS_ADDON'].replace('plugin.video.', '').upper() + ' (CACHE TRAKT)'
+    else:
+        progress_source = 'API TRAKT' if load_trakt_token() else ''
     return render_template('dashboard.html', version=current_app.config['APP_VERSION'], device_ok=device_ok,
         device_awake=is_device_awake(conf.get('SHIELD_IP'), conf.get('TARGET_OS')) if device_ok else False,
         kodi_ok=is_kodi_responsive(), shield_ip=conf.get('SHIELD_IP'), target_os=conf.get('TARGET_OS'),
-        tmdb_ok=bool(conf.get('TMDB_API_KEY')), trakt_ok=bool(load_trakt_token()),
+        tmdb_ok=bool(conf.get('TMDB_API_KEY')), progress_source=progress_source,
         p_def=conf.get('PLAYER_DEFAULT'), p_sel=conf.get('PLAYER_SELECT'), skill_id=conf.get('ALEXA_SKILL_ID'))
 
 @web_bp.route('/settings', methods=['GET', 'POST'])
@@ -46,32 +50,14 @@ def settings() -> Union[str, Response]:
         action = request.form.get("action")
         if action == "save_config":
             current_config = get_app_config()
-            for k in ["TMDB_API_KEY", "ALEXA_SKILL_ID", "TARGET_OS", "SHIELD_IP", "SHIELD_MAC", "KODI_PORT", "KODI_USER", "KODI_PASS", "SSH_USER", "SSH_PASS", "PLAYER_DEFAULT", "PLAYER_SELECT"]:
+            for k in ["TMDB_API_KEY", "ALEXA_SKILL_ID", "TARGET_OS", "SHIELD_IP", "SHIELD_MAC", "KODI_PORT", "KODI_USER", "KODI_PASS", "SSH_USER", "SSH_PASS", "PLAYER_DEFAULT", "PLAYER_SELECT", "PROGRESS_ADDON"]:
                 current_config[k] = request.form.get(k, "").strip()
                 
             if save_app_config(current_config): 
                 logger.info("⚙️ [Config] Configuration système sauvegardée.")
                 flash("Config sauvegardée avec succès !", "success")
-        elif action == "save_trakt":
-            c_id = request.form.get('client_id')
-            c_secret = request.form.get('client_secret')
-            pin = request.form.get('pin_code')
-            logger.info("🔑 [Trakt] Tentative de génération des tokens d'authentification...")
-            try:
-                r = requests.post("https://api.trakt.tv/oauth/token", json={"code": pin, "client_id": c_id, "client_secret": c_secret, "redirect_uri": "urn:ietf:wg:oauth:2.0:oob", "grant_type": "authorization_code"}, headers={'Content-Type': 'application/json'}, timeout=10)
-                if r.status_code == 200:
-                    data = r.json()
-                    save_trakt_token_data(data['access_token'], data['refresh_token'], c_id, c_secret)
-                    logger.info("✅ [Trakt] Authentification réussie et tokens sauvegardés.")
-                    flash("Tokens Trakt générés avec succès !")
-                else: 
-                    logger.error(f"❌ [Trakt] Erreur OAuth: {r.text}")
-                    flash(f"Erreur Trakt : {r.text}")
-            except Exception as e: 
-                logger.error(f"❌ [Trakt] Exception: {e}")
-                flash(f"Erreur : {str(e)}")
         return redirect(url_for('web.settings'))
-    return render_template('settings.html', version=current_app.config['APP_VERSION'], conf=get_app_config(), trakt_cfg=load_trakt_config())
+    return render_template('settings.html', version=current_app.config['APP_VERSION'], conf=get_app_config())
 
 @web_bp.route('/health')
 def health() -> Tuple[Response, int]: 

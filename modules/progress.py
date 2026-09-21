@@ -30,7 +30,7 @@ def _pull_progress_db() -> bool:
         if time.time() - _last_pull < PULL_TTL_S and os.path.exists(LOCAL_DB):
             return True
         from modules.adb import adb_run
-        addon = conf.get("PROGRESS_ADDON") or os.getenv("PROGRESS_ADDON", DEFAULT_PROGRESS_ADDON)
+        addon = conf.get("PROGRESS_ADDON") or DEFAULT_PROGRESS_ADDON
         remote = f"{KODI_ADDON_DATA}/{addon}/traktcache.db"
         tmp = LOCAL_DB + ".part"
         if os.path.exists(tmp): os.remove(tmp)
