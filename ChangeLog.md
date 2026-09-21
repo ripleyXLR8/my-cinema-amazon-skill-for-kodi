@@ -1,3 +1,7 @@
+## [2.7.1] - 2026-09-21
+- 🗑️ **Assistant Trakt retiré des réglages** : créer une application API Trakt exige un abonnement VIP. L'API Trakt reste utilisable en secours par variables d'environnement (`TRAKT_CLIENT_ID`, `TRAKT_ACCESS_TOKEN`, ...) ou par un `trakt_tokens.json` existant.
+- ⚙️ Nouveau réglage `PROGRESS_ADDON` (addon Kodi dont le cache Trakt donne l'épisode suivant) ; le dashboard affiche la source de reprise utilisée.
+
 ## [2.7.0] - 2026-09-21
 - 📖 **Reprise sans clé API Trakt** : l'épisode suivant est lu dans le cache Trakt de l'addon Kodi (`PROGRESS_ADDON`, par défaut `plugin.video.pov`) rapatrié par ADB. L'API Trakt personnelle (réservée aux VIP depuis le 30/07/2026) ne sert plus que de secours ; un refus 401/403 est désormais signalé clairement.
 - 🧩 **Players POV** : ajout de `pov_auto.json` et `pov_select.json` pour TMDb Helper.
