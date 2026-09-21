@@ -120,12 +120,21 @@ def get_tmdb_last_aired(tmdb_id: int) -> Tuple[Optional[int], Optional[int]]:
     return None, None
 
 def get_trakt_next_episode(tmdb_show_id: int) -> Tuple[Optional[int], Optional[int]]:
+    # Source n°1 : le cache Trakt de l'addon Kodi (aucune clé API requise)
+    from modules.progress import get_next_episode_from_kodi
+    s, e, source_ok = get_next_episode_from_kodi(tmdb_show_id)
+    if source_ok: return s, e
+
+    # Source n°2 : l'API Trakt avec la clé personnelle (VIP requis depuis le 30/07/2026)
     token = load_trakt_token()
     cfg = load_trakt_config()
     if not cfg.get("client_id") or not token: return None, None
     headers = {'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': cfg["client_id"], 'Authorization': f'Bearer {token}'}
     try:
         r = requests.get(f"https://api.trakt.tv/search/tmdb/{tmdb_show_id}?type=show", headers=headers, timeout=5)
+        if r.status_code in (401, 403):
+            logger.error(f"❌ [Trakt] API refusée (HTTP {r.status_code}) : jeton expiré ou application API désactivée (VIP requis).")
+            return None, None
         trakt_id = r.json()[0]['show']['ids']['trakt']
         r = requests.get(f"https://api.trakt.tv/shows/{trakt_id}/progress/watched", headers=headers, timeout=5)
         next_ep = r.json().get('next_episode')

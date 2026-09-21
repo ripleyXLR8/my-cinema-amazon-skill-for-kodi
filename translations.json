@@ -24,8 +24,7 @@
         "change_source_episode": "Recherche d'autres sources pour {} saison {} épisode {}...",
         "nothing_playing": "Rien n'est en cours de lecture.",
         "kodi_offline": "Kodi ne semble pas joignable.",
-        "content_error": "Impossible d'identifier le contenu en cours.",
-        "patcher_triggered": "Lancement de la réparation de Fen Light..."
+        "content_error": "Impossible d'identifier le contenu en cours."
     },
     "en": {
         "launch": "My Cinema is open. What do you want to watch?",
@@ -52,7 +51,6 @@
         "change_source_episode": "Searching for other sources for {} season {} episode {}...",
         "nothing_playing": "Nothing is currently playing.",
         "kodi_offline": "Kodi seems unreachable.",
-        "content_error": "Cannot identify playing content.",
-        "patcher_triggered": "Starting Fen Light repair..."
+        "content_error": "Cannot identify playing content."
     }
 }

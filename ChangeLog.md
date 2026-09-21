@@ -1,3 +1,9 @@
+## [2.7.0] - 2026-09-21
+- 📖 **Reprise sans clé API Trakt** : l'épisode suivant est lu dans le cache Trakt de l'addon Kodi (`PROGRESS_ADDON`, par défaut `plugin.video.pov`) rapatrié par ADB. L'API Trakt personnelle (réservée aux VIP depuis le 30/07/2026) ne sert plus que de secours ; un refus 401/403 est désormais signalé clairement.
+- 🧩 **Players POV** : ajout de `pov_auto.json` et `pov_select.json` pour TMDb Helper.
+- 🔌 **ADB** : une commande n'est plus rejouée après un délai dépassé (elle pouvait s'exécuter deux fois sur l'appareil).
+- 🗑️ **Patcher Fen Light supprimé** : module, thread horaire, carte du dashboard, route `/trigger-patch`, intent `TriggerPatcherIntent` et workflow Gemini de mise à jour des signatures.
+
 ## [2.6.95] - 2026-09-20
 - 🔐 **ADB** : la demande d'autorisation reste affichée 120 s sur la TV (5 s auparavant : impossible à accepter), état « ADB non autorisé » visible dans le dashboard et les logs.
 - 🔌 **ADB** : connexion persistante et partagée (plus de nouvelle connexion toutes les 5 s), reconnexion automatique, accès sérialisé.

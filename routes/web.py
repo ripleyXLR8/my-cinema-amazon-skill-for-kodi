@@ -9,7 +9,6 @@ from wakeonlan import send_magic_packet
 
 from modules.config import logger, get_app_config, save_app_config, load_trakt_config, load_trakt_token, save_trakt_token_data, get_kodi_url
 from modules.logic import is_device_online, is_device_awake, is_kodi_responsive, search_tmdb_movie, search_tmdb_show, get_trakt_next_episode, get_tmdb_last_aired, get_playback_url, worker_process
-from modules.patcher import PATCH_STATE, check_and_patch_fenlight
 from modules.extensions import executor
 
 web_bp = Blueprint('web', __name__)
@@ -38,7 +37,7 @@ def dashboard() -> str:
     return render_template('dashboard.html', version=current_app.config['APP_VERSION'], device_ok=device_ok,
         device_awake=is_device_awake(conf.get('SHIELD_IP'), conf.get('TARGET_OS')) if device_ok else False,
         kodi_ok=is_kodi_responsive(), shield_ip=conf.get('SHIELD_IP'), target_os=conf.get('TARGET_OS'),
-        tmdb_ok=bool(conf.get('TMDB_API_KEY')), trakt_ok=bool(load_trakt_token()), patch_state=PATCH_STATE,
+        tmdb_ok=bool(conf.get('TMDB_API_KEY')), trakt_ok=bool(load_trakt_token()),
         p_def=conf.get('PLAYER_DEFAULT'), p_sel=conf.get('PLAYER_SELECT'), skill_id=conf.get('ALEXA_SKILL_ID'))
 
 @web_bp.route('/settings', methods=['GET', 'POST'])
@@ -213,11 +212,4 @@ def test_connection_route() -> Response:
         except Exception as e: 
             logger.error(f"Erreur test SSH: {e}")
             flash(f"Erreur SSH : {e}")
-    return redirect(url_for('web.dashboard'))
-
-@web_bp.route('/trigger-patch', methods=['POST'])
-def trigger_patch_route() -> Response:
-    logger.info("🔧 [Web] Lancement manuel du Patcher depuis le dashboard.")
-    executor.submit(check_and_patch_fenlight)
-    flash("Processus de patch lancé.")
     return redirect(url_for('web.dashboard'))
