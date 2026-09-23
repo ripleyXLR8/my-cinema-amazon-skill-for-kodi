@@ -62,9 +62,10 @@ def settings() -> Union[str, Response]:
                 flash("Config sauvegardée avec succès !", "success")
         return redirect(url_for('web.settings'))
     authorized = trakt.is_authorized()
+    trakt_state, trakt_account = trakt.check_authorization() if authorized else ("none", None)
     return render_template('settings.html', version=current_app.config['APP_VERSION'], conf=get_app_config(),
         trakt_configured=trakt.is_configured(), trakt_authorized=authorized,
-        trakt_account=trakt.account_name() if authorized else None)
+        trakt_state=trakt_state, trakt_account=trakt_account)
 
 @web_bp.route('/trakt/connect', methods=['POST'])
 def trakt_connect() -> Response:

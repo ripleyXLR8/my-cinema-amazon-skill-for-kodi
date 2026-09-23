@@ -97,10 +97,18 @@
         <h3 class="text-lg font-semibold text-blue-400 mb-4 border-b border-slate-700 pb-2">4. Compte Trakt.tv</h3>
 
         {% if trakt_authorized %}
-            <p class="text-slate-300 mb-1">Compte connecté{% if trakt_account %} : <span class="font-semibold text-green-400">{{ trakt_account }}</span>{% endif %}.</p>
-            <p class="text-slate-400 mb-4 text-sm">La reprise des séries est lue chez Trakt : elle fonctionne même appareil éteint, et reste juste si vous regardez un épisode sans passer par la commande vocale.</p>
+            {% if trakt_state == 'invalid' %}
+                <p class="text-red-400 font-semibold mb-1">Autorisation refusée par Trakt.</p>
+                <p class="text-slate-400 mb-4 text-sm">L'autorisation enregistrée n'est plus acceptée : jeton révoqué, ou application supprimée chez Trakt. La reprise retombe sur le cache de l'addon Kodi, qui suppose l'appareil allumé. Cliquez ci-dessous pour repartir de zéro, puis reconnectez le compte.</p>
+            {% elif trakt_state == 'unknown' %}
+                <p class="text-amber-400 font-semibold mb-1">Compte connecté, vérification impossible.</p>
+                <p class="text-slate-400 mb-4 text-sm">Trakt n'a pas pu être joint à l'instant : c'est sans doute passager, l'autorisation reste probablement valable.</p>
+            {% else %}
+                <p class="text-slate-300 mb-1">Compte connecté{% if trakt_account %} : <span class="font-semibold text-green-400">{{ trakt_account }}</span>{% endif %}.</p>
+                <p class="text-slate-400 mb-4 text-sm">La reprise des séries est lue chez Trakt : elle fonctionne même appareil éteint, et reste juste si vous regardez un épisode sans passer par la commande vocale.</p>
+            {% endif %}
             <form method="POST" action="{{ url_for('web.trakt_disconnect') }}">
-                <button type="submit" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2.5 px-5 rounded-lg transition text-sm">DÉCONNECTER LE COMPTE</button>
+                <button type="submit" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2.5 px-5 rounded-lg transition text-sm">{% if trakt_state == 'invalid' %}RÉINITIALISER LA CONNEXION TRAKT{% else %}DÉCONNECTER LE COMPTE{% endif %}</button>
             </form>
         {% elif trakt_configured %}
             <p class="text-slate-400 mb-4 text-sm">Connecter un compte Trakt permet de reprendre une série même quand l'appareil est éteint. Sans lui, la progression est lue dans le cache de l'addon Kodi, ce qui suppose l'appareil allumé et joignable.</p>

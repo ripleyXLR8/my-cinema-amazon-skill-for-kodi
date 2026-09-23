@@ -108,7 +108,15 @@ def device_code_poll(device_code: str) -> Tuple[str, str]:
 
 
 def disconnect() -> bool:
-    """Oublie les jetons de l'utilisateur (l'application reste configurée)."""
+    """Oublie l'autorisation de l'utilisateur et repart des identifiants fournis.
+
+    Les identifiants d'application enregistrés ne sont volontairement PAS réécrits :
+    le fichier de jetons est fusionné par-dessus les variables d'environnement, si
+    bien qu'un client_id périmé (une application supprimée chez Trakt, par exemple)
+    masquerait celui embarqué dans l'image — y compris pendant une tentative de
+    reconnexion, qui échouerait alors sans recours. En les laissant tomber, on
+    revient à TRAKT_CLIENT_ID / TRAKT_CLIENT_SECRET ou aux identifiants embarqués.
+    """
     cfg = load_trakt_config()
     token = cfg.get("access_token")
     if token and cfg.get("client_id") and cfg.get("client_secret"):
@@ -117,8 +125,8 @@ def disconnect() -> bool:
                 "token": token, "client_id": cfg["client_id"], "client_secret": cfg["client_secret"]
             }, timeout=TIMEOUT_S)
         except Exception as e:
-            logger.warning(f"⚠️ [Trakt] Révocation côté Trakt impossible ({e}) ; jetons oubliés localement.")
-    ok = save_trakt_token_data("", "", cfg.get("client_id"), cfg.get("client_secret"))
+            logger.warning(f"⚠️ [Trakt] Révocation côté Trakt impossible ({e}) ; autorisation oubliée localement.")
+    ok = save_trakt_token_data("", "")
     logger.info("🔌 [Trakt] Compte déconnecté.")
     return ok
 
@@ -172,14 +180,24 @@ def get_next_episode(tmdb_id: int) -> Tuple[Optional[int], Optional[int], bool]:
         return None, None, False
 
 
-def account_name() -> Optional[str]:
-    """Nom du compte autorisé, pour l'afficher dans les réglages."""
+def check_authorization() -> Tuple[str, Optional[str]]:
+    """Vérifie que l'autorisation enregistrée est encore acceptée par Trakt.
+
+    Renvoie ('ok', nom du compte), ('invalid', None) si Trakt la refuse — jeton
+    révoqué, ou application supprimée — et ('unknown', None) si la vérification
+    elle-même a échoué (réseau). Distinguer les deux évite d'annoncer « autorisation
+    à refaire » à quelqu'un dont la connexion Internet a simplement hoqueté.
+    """
     headers = _headers()
-    if not headers: return None
+    if not headers: return "invalid", None
     try:
         r = requests.get(f"{API}/users/settings", headers=headers, timeout=TIMEOUT_S)
         if r.status_code == 200:
-            return r.json().get("user", {}).get("username")
-    except Exception:
-        pass
-    return None
+            return "ok", r.json().get("user", {}).get("username")
+        if r.status_code in (401, 403):
+            logger.warning(f"⚠️ [Trakt] L'autorisation enregistrée est refusée (HTTP {r.status_code}) : elle est à refaire.")
+            return "invalid", None
+        return "unknown", None
+    except Exception as e:
+        logger.warning(f"⚠️ [Trakt] Vérification de l'autorisation impossible : {e}")
+        return "unknown", None
