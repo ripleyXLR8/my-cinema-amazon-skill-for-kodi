@@ -92,5 +92,82 @@
 
         <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-lg transition text-lg mt-6 shadow-lg shadow-blue-600/20">SAUVEGARDER LA CONFIGURATION</button>
     </form>
+
+    <div class="card p-6 rounded-xl border border-slate-700 mt-8 mb-8">
+        <h3 class="text-lg font-semibold text-blue-400 mb-4 border-b border-slate-700 pb-2">4. Compte Trakt.tv</h3>
+
+        {% if trakt_authorized %}
+            <p class="text-slate-300 mb-1">Compte connecté{% if trakt_account %} : <span class="font-semibold text-green-400">{{ trakt_account }}</span>{% endif %}.</p>
+            <p class="text-slate-400 mb-4 text-sm">La reprise des séries est lue chez Trakt : elle fonctionne même appareil éteint, et reste juste si vous regardez un épisode sans passer par la commande vocale.</p>
+            <form method="POST" action="{{ url_for('web.trakt_disconnect') }}">
+                <button type="submit" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2.5 px-5 rounded-lg transition text-sm">DÉCONNECTER LE COMPTE</button>
+            </form>
+        {% elif trakt_configured %}
+            <p class="text-slate-400 mb-4 text-sm">Connecter un compte Trakt permet de reprendre une série même quand l'appareil est éteint. Sans lui, la progression est lue dans le cache de l'addon Kodi, ce qui suppose l'appareil allumé et joignable.</p>
+            <p class="text-slate-500 mb-4 text-xs">Rien à créer : un code s'affiche ici, vous le saisissez sur Trakt. Attention, un compte Trakt gratuit est limité à deux applications connectées.</p>
+
+            <button type="button" id="trakt-start" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 px-5 rounded-lg transition text-sm">CONNECTER MON COMPTE TRAKT</button>
+
+            <div id="trakt-box" class="hidden mt-4 p-4 bg-slate-900 border border-slate-700 rounded-lg">
+                <p class="text-slate-400 text-sm mb-2">Saisissez ce code sur <a id="trakt-url" href="https://trakt.tv/activate" target="_blank" rel="noopener" class="text-blue-400 underline">trakt.tv/activate</a> :</p>
+                <p id="trakt-code" class="text-3xl font-mono font-bold tracking-widest text-white mb-2"></p>
+                <p id="trakt-status" class="text-slate-400 text-sm"></p>
+            </div>
+        {% else %}
+            <p class="text-slate-400 text-sm">Aucun identifiant d'application Trakt n'est disponible dans cette installation. Renseignez <code class="text-slate-300">TRAKT_CLIENT_ID</code> et <code class="text-slate-300">TRAKT_CLIENT_SECRET</code> (variables d'environnement du conteneur) avec ceux d'une application créée sur <a href="https://developer.trakt.tv/apps" target="_blank" rel="noopener" class="text-blue-400 underline">developer.trakt.tv</a>, puis redémarrez.</p>
+        {% endif %}
+    </div>
 </div>
+
+{% if trakt_configured and not trakt_authorized %}
+<script>
+(function () {
+    const startBtn = document.getElementById('trakt-start');
+    const box = document.getElementById('trakt-box');
+    const codeEl = document.getElementById('trakt-code');
+    const statusEl = document.getElementById('trakt-status');
+    const urlEl = document.getElementById('trakt-url');
+    let timer = null;
+
+    function stop(message, colour) {
+        if (timer) { clearInterval(timer); timer = null; }
+        statusEl.textContent = message;
+        statusEl.className = 'text-sm ' + colour;
+        startBtn.disabled = false;
+    }
+
+    startBtn.addEventListener('click', async () => {
+        startBtn.disabled = true;
+        try {
+            const res = await fetch('{{ url_for("web.trakt_connect") }}', { method: 'POST' });
+            const data = await res.json();
+            if (!data.ok) { stop(data.error || 'Trakt a refusé la demande.', 'text-red-400'); return; }
+
+            box.classList.remove('hidden');
+            codeEl.textContent = data.user_code;
+            if (data.verification_url) { urlEl.href = data.verification_url; urlEl.textContent = data.verification_url; }
+            statusEl.textContent = 'En attente de votre validation…';
+            statusEl.className = 'text-sm text-slate-400';
+
+            // Trakt impose un intervalle minimal entre deux vérifications : le respecter,
+            // sinon il répond 429 et l'autorisation traîne au lieu d'aller plus vite.
+            const deadline = Date.now() + (data.expires_in || 600) * 1000;
+            timer = setInterval(async () => {
+                if (Date.now() > deadline) { stop('Code expiré, relancez la connexion.', 'text-red-400'); return; }
+                const poll = await fetch('{{ url_for("web.trakt_poll") }}', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ device_code: data.device_code })
+                });
+                const result = await poll.json();
+                if (result.state === 'ok') { stop('Compte connecté, rechargement…', 'text-green-400'); location.reload(); }
+                else if (result.state !== 'pending' && result.state !== 'slow_down') { stop(result.message, 'text-red-400'); }
+            }, Math.max(data.interval || 5, 5) * 1000);
+        } catch (err) {
+            stop('Erreur de communication avec le serveur : ' + err, 'text-red-400');
+        }
+    });
+})();
+</script>
+{% endif %}
 {% endblock %}

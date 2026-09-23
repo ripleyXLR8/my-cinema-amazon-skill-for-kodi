@@ -7,7 +7,8 @@ from flask.wrappers import Response
 from typing import Union, Tuple
 from wakeonlan import send_magic_packet
 
-from modules.config import logger, get_app_config, save_app_config, load_trakt_token, get_kodi_url
+from modules.config import logger, get_app_config, save_app_config, get_kodi_url
+from modules import trakt
 from modules.logic import is_device_online, is_device_awake, is_kodi_responsive, search_tmdb_movie, search_tmdb_show, get_trakt_next_episode, get_tmdb_last_aired, get_playback_url, worker_process
 from modules.extensions import executor
 
@@ -34,10 +35,13 @@ def require_auth():
 def dashboard() -> str:
     conf = get_app_config()
     device_ok = is_device_online(conf.get('SHIELD_IP'))
-    if conf.get('TARGET_OS') == 'android' and conf.get('PROGRESS_ADDON'):
+    # Source annoncée = celle que la chaîne interrogera en premier (cf. get_trakt_next_episode)
+    if trakt.is_authorized():
+        progress_source = 'API TRAKT'
+    elif conf.get('TARGET_OS') == 'android' and conf.get('PROGRESS_ADDON'):
         progress_source = conf['PROGRESS_ADDON'].replace('plugin.video.', '').upper() + ' (CACHE TRAKT)'
     else:
-        progress_source = 'API TRAKT' if load_trakt_token() else ''
+        progress_source = ''
     return render_template('dashboard.html', version=current_app.config['APP_VERSION'], device_ok=device_ok,
         device_awake=is_device_awake(conf.get('SHIELD_IP'), conf.get('TARGET_OS')) if device_ok else False,
         kodi_ok=is_kodi_responsive(), shield_ip=conf.get('SHIELD_IP'), target_os=conf.get('TARGET_OS'),
@@ -57,7 +61,31 @@ def settings() -> Union[str, Response]:
                 logger.info("⚙️ [Config] Configuration système sauvegardée.")
                 flash("Config sauvegardée avec succès !", "success")
         return redirect(url_for('web.settings'))
-    return render_template('settings.html', version=current_app.config['APP_VERSION'], conf=get_app_config())
+    authorized = trakt.is_authorized()
+    return render_template('settings.html', version=current_app.config['APP_VERSION'], conf=get_app_config(),
+        trakt_configured=trakt.is_configured(), trakt_authorized=authorized,
+        trakt_account=trakt.account_name() if authorized else None)
+
+@web_bp.route('/trakt/connect', methods=['POST'])
+def trakt_connect() -> Response:
+    """Démarre l'autorisation : renvoie le code que l'utilisateur ira saisir chez Trakt."""
+    ok, data = trakt.device_code_start()
+    return jsonify({"ok": ok, **data})
+
+@web_bp.route('/trakt/poll', methods=['POST'])
+def trakt_poll() -> Response:
+    """Vérifie si l'utilisateur a validé le code affiché."""
+    device_code = (request.json or {}).get("device_code", "")
+    if not device_code:
+        return jsonify({"state": "invalid", "message": "Code d'appareil manquant."})
+    state, message = trakt.device_code_poll(device_code)
+    return jsonify({"state": state, "message": message})
+
+@web_bp.route('/trakt/disconnect', methods=['POST'])
+def trakt_disconnect() -> Response:
+    trakt.disconnect()
+    flash("Compte Trakt déconnecté.", "success")
+    return redirect(url_for('web.settings'))
 
 @web_bp.route('/health')
 def health() -> Tuple[Response, int]: 

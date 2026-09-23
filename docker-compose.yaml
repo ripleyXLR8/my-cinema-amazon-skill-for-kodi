@@ -46,10 +46,13 @@ services:
       - TMDB_API_KEY=your_tmdb_api_key
       - ALEXA_SKILL_ID=amzn1.ask.skill.xxxx-xxxx-xxxx-xxxx
       
-      # --- TRAKT.TV ---
-      - TRAKT_CLIENT_ID=your_trakt_client_id
-      - TRAKT_ACCESS_TOKEN=your_trakt_access_token
-      - TRAKT_REFRESH_TOKEN=your_trakt_refresh_token
+      # --- TRAKT.TV (facultatif) ---
+      # Rien à renseigner dans le cas courant : l'image embarque l'application
+      # Trakt de MyCinema, et le compte se connecte depuis la page de réglages.
+      # Ces deux variables ne servent qu'à utiliser VOTRE propre application
+      # (créée sur developer.trakt.tv, redirection urn:ietf:wg:oauth:2.0:oob).
+      # - TRAKT_CLIENT_ID=your_trakt_client_id
+      # - TRAKT_CLIENT_SECRET=your_trakt_client_secret
       
       # --- TMDB HELPER PLAYERS ---
       - PLAYER_DEFAULT=fenlight_auto.json
