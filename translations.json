@@ -24,7 +24,8 @@
         "change_source_episode": "Recherche d'autres sources pour {} saison {} épisode {}...",
         "nothing_playing": "Rien n'est en cours de lecture.",
         "kodi_offline": "Kodi ne semble pas joignable.",
-        "content_error": "Impossible d'identifier le contenu en cours."
+        "content_error": "Impossible d'identifier le contenu en cours.",
+        "progress_unreachable": "Je n'arrive pas à joindre votre lecteur, donc je ne sais pas où vous en êtes dans {}. Rallumez-le, ou connectez un compte Trakt pour que la reprise fonctionne même appareil éteint."
     },
     "en": {
         "launch": "My Cinema is open. What do you want to watch?",
@@ -51,6 +52,7 @@
         "change_source_episode": "Searching for other sources for {} season {} episode {}...",
         "nothing_playing": "Nothing is currently playing.",
         "kodi_offline": "Kodi seems unreachable.",
-        "content_error": "Cannot identify playing content."
+        "content_error": "Cannot identify playing content.",
+        "progress_unreachable": "I can't reach your player, so I don't know where you are in {}. Switch it on, or connect a Trakt account so resuming works even when it's off."
     }
 }

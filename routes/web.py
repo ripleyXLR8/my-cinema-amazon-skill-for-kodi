@@ -9,7 +9,7 @@ from wakeonlan import send_magic_packet
 
 from modules.config import logger, get_app_config, save_app_config, get_kodi_url
 from modules import trakt
-from modules.logic import is_device_online, is_device_awake, is_kodi_responsive, search_tmdb_movie, search_tmdb_show, get_trakt_next_episode, get_tmdb_last_aired, get_playback_url, worker_process
+from modules.logic import is_device_online, is_device_awake, is_kodi_responsive, search_tmdb_movie, search_tmdb_show, get_next_episode, get_tmdb_last_aired, get_playback_url, worker_process
 from modules.extensions import executor
 
 web_bp = Blueprint('web', __name__)
@@ -35,7 +35,7 @@ def require_auth():
 def dashboard() -> str:
     conf = get_app_config()
     device_ok = is_device_online(conf.get('SHIELD_IP'))
-    # Source annoncée = celle que la chaîne interrogera en premier (cf. get_trakt_next_episode)
+    # Source annoncée = celle que la chaîne interrogera en premier (cf. get_next_episode)
     if trakt.is_authorized():
         progress_source = 'API TRAKT'
     elif conf.get('TARGET_OS') == 'android' and conf.get('PROGRESS_ADDON'):
@@ -127,7 +127,7 @@ def web_play_route() -> Response:
                     executor.submit(worker_process, get_playback_url(mid, "episode", ls, le, force_select))
                     flash(f"📺 Lancement dernier : {title} S{ls}E{le}")
             else:
-                ts, te = get_trakt_next_episode(mid)
+                ts, te, _ = get_next_episode(mid)
                 if ts and te:
                     logger.info(f"🍿 [Web] Reprise série via Trakt '{title}' (Saison {ts} Épisode {te})")
                     executor.submit(worker_process, get_playback_url(mid, "episode", ts, te, force_select))

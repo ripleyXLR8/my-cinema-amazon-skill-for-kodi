@@ -11,7 +11,7 @@ from modules.config import load_translations, get_secret_key, log_startup_banner
 from routes.web import web_bp
 from routes.api import api_bp
 
-APP_VERSION: str = "2.8.0"
+APP_VERSION: str = "2.8.1"
 
 app = Flask(__name__)
 # Génère une clé sécurisée ou utilise la clé persistante générée au premier démarrage
@@ -31,6 +31,13 @@ app.register_blueprint(api_bp)
 # Ces fonctions s'exécutent dès que Gunicorn importe le fichier app.py
 load_translations()
 log_startup_banner(APP_VERSION)
+
+# Garde la copie locale du cache de progression a jour hors de toute demande
+# vocale : le chemin vocal ne doit jamais attendre ADB, et doit pouvoir repondre
+# alors meme que l'appareil est eteint -- c'est justement le moment ou l'on
+# demande a Alexa de reprendre une serie.
+from modules.progress import demarrer_rafraichissement
+demarrer_rafraichissement()
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
