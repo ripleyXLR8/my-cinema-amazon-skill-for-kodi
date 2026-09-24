@@ -78,6 +78,14 @@
                 <p class="text-slate-500 text-xs mt-1">TMDb Helper sert de couche d'abstraction : il sait piloter n'importe quel lecteur. Le contrôle direct est plus rapide et évite son détour, mais ne fonctionne qu'avec les addons dont MyCinema connaît la recette. En cas de doute, laissez TMDb Helper.</p>
             </div>
 
+            {% if lecteurs_choisis and conf.CONTROL_MODE != 'direct' %}
+            <div class="mt-3 p-3 bg-amber-500/10 border border-amber-500/40 rounded-lg">
+                <p class="text-amber-300 text-xs">⚠️ Des lecteurs sont cochés ci-dessous, mais le mode est resté sur
+                <strong>via TMDb Helper</strong> : leurs mots-clés sont <strong>ignorés</strong>. Choisissez
+                « Contrôle direct » ci-dessus pour qu'ils prennent effet.</p>
+            </div>
+            {% endif %}
+
             <div class="mt-3 p-3 bg-slate-900/60 border border-slate-700 rounded-lg">
                 <p class="text-xs font-medium text-slate-400 mb-2">Addons détectés sur votre appareil et pilotables directement</p>
                 {% if pilotables %}

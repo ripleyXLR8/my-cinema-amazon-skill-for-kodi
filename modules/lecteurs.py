@@ -155,7 +155,17 @@ def extraire_motcle(requete: str) -> Tuple[str, Optional[str]]:
     debut, fin = meilleur[2]
     titre = (requete[:debut] + ' ' + requete[fin:]).strip()
     titre = re.sub(r'\s+', ' ', titre)
-    logger.info(f"🎯 [Lecteurs] Mot-clé reconnu : '{requete[debut:fin].strip()}' -> {meilleur[1]}")
+    mot = requete[debut:fin].strip()
+    # Le mot-clé est retiré du titre dans tous les cas : « en français » n'aide
+    # pas une recherche TMDB. Mais il ne route que si le mode direct est actif —
+    # annoncer un routage qui sera ignoré revient à mentir dans le journal.
+    if not mode_direct():
+        logger.warning(
+            f"⚠️ [Lecteurs] Mot-clé '{mot}' reconnu, mais le contrôle direct est "
+            f"désactivé : il est retiré du titre et le routage vers "
+            f"{nom_lecteur(meilleur[1])} est ignoré (TMDb Helper reste la voie).")
+        return titre, None
+    logger.info(f"🎯 [Lecteurs] Mot-clé reconnu : '{mot}' -> {meilleur[1]}")
     return titre, meilleur[1]
 
 
