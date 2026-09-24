@@ -14,21 +14,38 @@ from modules.config import logger, get_app_config, DATA_DIR
 KODI_ADDON_DATA = "/sdcard/Android/data/org.xbmc.kodi/files/.kodi/userdata/addon_data"
 DEFAULT_PROGRESS_ADDON = "plugin.video.pov"
 LOCAL_DB = os.path.join(DATA_DIR, "kodi_progress_temp.db")
-PULL_TTL_S = 30
+# Intervalle du rafraichissement de fond, quand l'appareil repond.
+REFRESH_S = 900
 
 _pull_lock = threading.Lock()
-_last_pull: float = 0.0
+_refresh_started = False
 
-def _pull_progress_db() -> bool:
-    """Rapatrie traktcache.db de l'addon par ADB (au plus une fois toutes les PULL_TTL_S secondes)."""
-    global _last_pull
+def age_copie() -> Optional[float]:
+    """Anciennete de la copie locale en secondes, None si elle n'existe pas."""
+    try:
+        return time.time() - os.path.getmtime(LOCAL_DB)
+    except OSError:
+        return None
+
+def _duree(secondes: float) -> str:
+    if secondes < 3600: return f"{secondes / 60:.0f} min"
+    if secondes < 86400: return f"{secondes / 3600:.1f} h"
+    return f"{secondes / 86400:.1f} jours"
+
+def rapatrier(force: bool = False) -> bool:
+    """Rapatrie traktcache.db de l'addon par ADB. Vrai si la copie a ete renouvelee.
+
+    Appele par la tache de fond, et en dernier recours quand aucune copie n'existe.
+    Jamais sur le chemin d'une demande vocale : Alexa attend quelques secondes, ADB
+    peut en prendre autant, et surtout l'appareil est souvent eteint a ce moment-la.
+    """
     conf = get_app_config()
     ip = conf.get("SHIELD_IP")
     if not ip or conf.get("TARGET_OS") != "android":
         return False
-    with _pull_lock:
-        if time.time() - _last_pull < PULL_TTL_S and os.path.exists(LOCAL_DB):
-            return True
+    if not _pull_lock.acquire(blocking=force):
+        return False  # un rapatriement est deja en cours : ne pas faire la queue
+    try:
         from modules.adb import adb_run
         addon = conf.get("PROGRESS_ADDON") or DEFAULT_PROGRESS_ADDON
         remote = f"{KODI_ADDON_DATA}/{addon}/traktcache.db"
@@ -36,11 +53,50 @@ def _pull_progress_db() -> bool:
         if os.path.exists(tmp): os.remove(tmp)
         adb_run(ip, lambda d: d.pull(remote, tmp), f"pull {addon}/traktcache.db")
         if not os.path.exists(tmp) or os.path.getsize(tmp) == 0:
-            logger.warning(f"⚠️ [Progression] Cache de visionnage introuvable sur l'appareil ({remote}).")
+            return False
+        # Une copie tronquee ou illisible empoisonnerait la reprise bien plus
+        # surement qu'une copie un peu datee : on ne remplace qu'apres controle.
+        try:
+            controle = sqlite3.connect(f"file:{tmp}?mode=ro", uri=True)
+            controle.execute("SELECT 1 FROM watched_status LIMIT 1").fetchone()
+            controle.close()
+        except sqlite3.Error as e:
+            logger.warning(f"⚠️ [Progression] Copie rapatriee inutilisable ({e}) : l'ancienne est conservee.")
+            os.remove(tmp)
             return False
         os.replace(tmp, LOCAL_DB)
-        _last_pull = time.time()
+        logger.info(f"📥 [Progression] Cache de {addon} rafraichi.")
         return True
+    finally:
+        _pull_lock.release()
+
+def demarrer_rafraichissement() -> None:
+    """Tache de fond qui garde la copie locale a jour quand l'appareil repond.
+
+    C'est elle qui paie le cout d'ADB, hors de toute demande vocale. Le chemin
+    vocal se contente alors de lire la copie : instantane, et disponible meme
+    appareil eteint.
+    """
+    global _refresh_started
+    if _refresh_started:
+        return
+    conf = get_app_config()
+    if conf.get("TARGET_OS") != "android" or not conf.get("SHIELD_IP"):
+        return
+    _refresh_started = True
+
+    def boucle() -> None:
+        while True:
+            try:
+                from modules.logic import is_device_online
+                if is_device_online(get_app_config().get("SHIELD_IP")):
+                    rapatrier(force=True)
+            except Exception as e:
+                logger.error(f"Erreur du rafraichissement de la progression : {e}")
+            time.sleep(REFRESH_S)
+
+    threading.Thread(target=boucle, name="progression-refresh", daemon=True).start()
+    logger.info(f"🔄 [Progression] Rafraichissement de fond toutes les {REFRESH_S // 60} min.")
 
 def _aired_episodes(tmdb_id: int) -> List[Tuple[int, int]]:
     """Liste ordonnée (saison, épisode) des épisodes déjà diffusés, hors spéciaux."""
@@ -64,8 +120,19 @@ def get_next_episode_from_kodi(tmdb_id: int) -> Tuple[Optional[int], Optional[in
     tenter une autre source. (None, None, True) signifie : rien à reprendre (jamais commencée ou terminée).
     """
     try:
-        if not _pull_progress_db():
-            return None, None, False
+        age = age_copie()
+        if age is None:
+            # Aucune copie encore : c'est le seul cas ou l'on accepte de payer ADB
+            # ici, faute de quoi une premiere installation ne saurait jamais rien.
+            rapatrier(force=True)
+            age = age_copie()
+            if age is None:
+                logger.warning("⚠️ [Progression] Aucune copie du cache de visionnage, et l'appareil est injoignable.")
+                return None, None, False
+        elif age > 2 * REFRESH_S:
+            # On repond quand meme : une copie datee vaut infiniment mieux que
+            # le silence, qui serait compris comme "aucune serie en cours".
+            logger.info(f"📖 [Progression] Copie du cache vieille de {_duree(age)} : reponse donnee sous reserve.")
         db = sqlite3.connect(f"file:{LOCAL_DB}?mode=ro", uri=True)
         try:
             mid = str(tmdb_id)

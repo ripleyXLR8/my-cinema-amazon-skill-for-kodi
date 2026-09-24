@@ -8,7 +8,7 @@ from flask.wrappers import Response
 from typing import Union, Tuple, Dict, Any, Optional
 
 from modules.config import logger, get_app_config, get_text, LOG_FILE
-from modules.logic import is_device_online, is_device_awake, is_kodi_responsive, search_tmdb_movie, search_tmdb_show, get_trakt_next_episode, get_tmdb_last_aired, check_episode_exists, get_playback_url, worker_process, get_kodi_active_player, get_kodi_player_item, change_source_worker
+from modules.logic import is_device_online, is_device_awake, is_kodi_responsive, search_tmdb_movie, search_tmdb_show, get_next_episode, PROGRESSION_OK, PROGRESSION_INJOIGNABLE, get_tmdb_last_aired, check_episode_exists, get_playback_url, worker_process, get_kodi_active_player, get_kodi_player_item, change_source_worker
 from modules.adb import ADB_STATE
 from modules.extensions import executor
 from ask_sdk_webservice_support.verifier import RequestVerifier
@@ -162,10 +162,13 @@ def alexa_handler() -> Union[Tuple[Response, int], Response]:
             if not query: return jsonify(build_res(get_text("ask_show", lang), False))
             mid, title = search_tmdb_show(query, lang=lang)
             if not mid: return jsonify(build_res(get_text("show_not_found", lang, query)))
-            s, e = get_trakt_next_episode(mid)
-            if s and e:
+            s, e, issue = get_next_episode(mid)
+            if issue == PROGRESSION_OK:
                 executor.submit(worker_process, get_playback_url(mid, "episode", s, e, force_select))
                 return jsonify(build_res(get_text("resume_show", lang, title, s, e, manual_msg)))
+            if issue == PROGRESSION_INJOIGNABLE:
+                # Ne pas répondre « pas de progression » : on n'en sait rien.
+                return jsonify(build_res(get_text("progress_unreachable", lang, title), False))
             return jsonify(build_res(get_text("no_progress", lang, title), False))
 
         elif intent_name == "PlayMovieIntent":
@@ -186,7 +189,7 @@ def alexa_handler() -> Union[Tuple[Response, int], Response]:
                     executor.submit(worker_process, get_playback_url(mid, "episode", s, e, force_select))
                     return jsonify(build_res(get_text("launch_show", lang, title, s, e, manual_msg)))
                 return jsonify(build_res(get_text("episode_not_found", lang), False))
-            ts, te = get_trakt_next_episode(mid)
+            ts, te, _ = get_next_episode(mid)
             ls, le = get_tmdb_last_aired(mid)
             return jsonify(build_res(get_text("ask_resume", lang, title, ts, te) if ts else get_text("ask_start", lang, title), False, {"pending_show_id": mid, "pending_show_name": title, "step": "ask_playback_method", "force_select": force_select, "trakt_next_s": ts, "trakt_next_e": te, "tmdb_last_s": ls, "tmdb_last_e": le}))
 

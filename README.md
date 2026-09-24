@@ -28,7 +28,7 @@ https://github.com/user-attachments/assets/da996a8d-55bf-4b13-b84a-542da01ceb5d
 * **🖥️ Web UI Control Panel:** A real-time dashboard to monitor your Kodi connection, TMDB API status and Trakt.tv synchronization.
 * **🗣️ Multi-Language Support:** Full native support for **English** and **French** commands and responses.
 * **⚡ Smart Power Management:** Automatically handles device wake-up (WoL/ADB for Shield) or system commands (SSH for LibreELEC) before playback.
-* **🧠 Resume where you left off:** Ask Alexa to *"Resume [Show]"* to play your next episode. Progress comes from Trakt when an account is connected — so it works **even with the device switched off** — and falls back to the Trakt cache of your Kodi add-on (POV by default, `PROGRESS_ADDON`) read over ADB.
+* **🧠 Resume where you left off:** Ask Alexa to *"Resume [Show]"* to play your next episode. Progress comes from Trakt when an account is connected — so it works **even with the device switched off** — and falls back to a locally cached snapshot of your Kodi add-on's Trakt cache (POV by default, `PROGRESS_ADDON`), refreshed in the background whenever the device is reachable. If no source can answer, the skill says so plainly instead of claiming you have no progress.
 * **🔍 TMDB Integration:** Accurate identification of movies and TV shows with rich metadata support.
 * **🔒 Secure Webhook:** Cryptographic validation of Alexa requests to ensure only your authorized skill can control your media center.
 

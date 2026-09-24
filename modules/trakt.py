@@ -184,12 +184,24 @@ def check_authorization() -> Tuple[str, Optional[str]]:
     """Vérifie que l'autorisation enregistrée est encore acceptée par Trakt.
 
     Renvoie ('ok', nom du compte), ('invalid', None) si Trakt la refuse — jeton
-    révoqué, ou application supprimée — et ('unknown', None) si la vérification
-    elle-même a échoué (réseau). Distinguer les deux évite d'annoncer « autorisation
-    à refaire » à quelqu'un dont la connexion Internet a simplement hoqueté.
+    révoqué, ou application supprimée —, ('unknown', None) si la vérification
+    elle-même a échoué (réseau), et ('absente', None) si aucune autorisation
+    n'est enregistrée.
+
+    Ces quatre cas sont volontairement distincts. Confondre « refusée » et
+    « rien d'enregistré » ferait annoncer un rejet de Trakt à quelqu'un qui ne
+    s'est jamais connecté ; confondre « refusée » et « injoignable » ferait
+    annoncer une autorisation à refaire à quelqu'un dont la connexion a
+    simplement hoqueté.
     """
+    cfg = load_trakt_config()
+    if not cfg.get("access_token"):
+        return "absente", None
     headers = _headers()
-    if not headers: return "invalid", None
+    if not headers:
+        # Un jeton existe, mais plus d'identifiants d'application : on ne peut
+        # rien vérifier, donc on n'affirme rien.
+        return "unknown", None
     try:
         r = requests.get(f"{API}/users/settings", headers=headers, timeout=TIMEOUT_S)
         if r.status_code == 200:

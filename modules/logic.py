@@ -77,7 +77,14 @@ def search_tmdb_movie(query: str, year: Optional[str] = None, lang: str = "fr") 
     if year: params['year'] = year
     try:
         r = requests.get("https://api.themoviedb.org/3/search/movie", params=params, timeout=5)
-        res = r.json()['results'][0]
+        # Zero resultat n'est pas une anomalie : c'est une reponse. La traiter en
+        # exception faisait apparaitre un "list index out of range" dans les
+        # journaux, qui donne a lire un bug la ou il n'y a qu'une faute de frappe.
+        resultats = r.json().get('results') or []
+        if not resultats:
+            logger.info(f"🔎 [TMDB] Aucun film ne correspond à '{query}'.")
+            return None, None, None
+        res = resultats[0]
         return res['id'], res['title'], res.get('release_date', '')[:4]
     except Exception as e:
         logger.error(f"Erreur recherche film TMDB '{query}': {e}")
@@ -90,7 +97,11 @@ def search_tmdb_show(query: str, lang: str = "fr") -> Tuple[Optional[int], Optio
     params = {"api_key": tmdb_key, "query": query, "language": "fr-FR" if lang == "fr" else "en-US"}
     try:
         r = requests.get("https://api.themoviedb.org/3/search/tv", params=params, timeout=5)
-        res = r.json()['results'][0]
+        resultats = r.json().get('results') or []
+        if not resultats:
+            logger.info(f"🔎 [TMDB] Aucune série ne correspond à '{query}'.")
+            return None, None
+        res = resultats[0]
         return res['id'], res['name']
     except Exception as e:
         logger.error(f"Erreur recherche série TMDB '{query}': {e}")
@@ -119,7 +130,14 @@ def get_tmdb_last_aired(tmdb_id: int) -> Tuple[Optional[int], Optional[int]]:
         logger.error(f"Erreur récupération dernier épisode TMDB {tmdb_id}: {e}")
     return None, None
 
-def get_trakt_next_episode(tmdb_show_id: int) -> Tuple[Optional[int], Optional[int]]:
+# Issues possibles d'une recherche de progression. La distinction compte : dire
+# « pas de progression » quand on n'a simplement pas pu lire la progression est
+# un mensonge, et il envoie l'utilisateur chercher une panne du mauvais côté.
+PROGRESSION_OK = 'ok'                    # un épisode à reprendre
+PROGRESSION_RIEN = 'rien'                # source consultée : rien à reprendre
+PROGRESSION_INJOIGNABLE = 'injoignable'  # aucune source n'a pu répondre
+
+def get_next_episode(tmdb_show_id: int) -> Tuple[Optional[int], Optional[int], str]:
     """Épisode à reprendre, demandé aux sources de progression dans l'ordre.
 
     L'ordre n'est pas arbitraire : Trakt vient en premier parce que c'est la seule
@@ -131,15 +149,20 @@ def get_trakt_next_episode(tmdb_show_id: int) -> Tuple[Optional[int], Optional[i
     suivante que si la précédente n'a pas pu répondre. Une source qui répond
     « rien à reprendre » fait donc autorité, elle n'est pas contredite par une
     source moins fiable.
+
+    Renvoie (saison, épisode, issue) où issue vaut PROGRESSION_OK, _RIEN ou
+    _INJOIGNABLE. L'appelant doit distinguer les deux derniers : « rien à
+    reprendre » est une réponse, « injoignable » est un aveu d'ignorance.
     """
     from modules.progress import get_next_episode_from_kodi
     from modules.trakt import get_next_episode as get_next_episode_from_trakt
 
     for source in (get_next_episode_from_trakt, get_next_episode_from_kodi):
         s, e, source_ok = source(tmdb_show_id)
-        if source_ok: return s, e
+        if source_ok:
+            return (s, e, PROGRESSION_OK) if s and e else (None, None, PROGRESSION_RIEN)
     logger.warning(f"⚠️ [Progression] Aucune source n'a pu répondre pour TMDB {tmdb_show_id}.")
-    return None, None
+    return None, None, PROGRESSION_INJOIGNABLE
 
 def get_playback_url(tmdb_id: int, media_type: str, season: Optional[int] = None, episode: Optional[int] = None, force_select: bool = False) -> str:
     conf = get_app_config()

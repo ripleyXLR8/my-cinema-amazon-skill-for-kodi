@@ -9,7 +9,7 @@ from wakeonlan import send_magic_packet
 
 from modules.config import logger, get_app_config, save_app_config, get_kodi_url
 from modules import trakt
-from modules.logic import is_device_online, is_device_awake, is_kodi_responsive, search_tmdb_movie, search_tmdb_show, get_trakt_next_episode, get_tmdb_last_aired, get_playback_url, worker_process
+from modules.logic import is_device_online, is_device_awake, is_kodi_responsive, search_tmdb_movie, search_tmdb_show, get_next_episode, PROGRESSION_OK, PROGRESSION_INJOIGNABLE, get_tmdb_last_aired, get_playback_url, worker_process
 from modules.extensions import executor
 
 web_bp = Blueprint('web', __name__)
@@ -35,7 +35,7 @@ def require_auth():
 def dashboard() -> str:
     conf = get_app_config()
     device_ok = is_device_online(conf.get('SHIELD_IP'))
-    # Source annoncée = celle que la chaîne interrogera en premier (cf. get_trakt_next_episode)
+    # Source annoncée = celle que la chaîne interrogera en premier (cf. get_next_episode)
     if trakt.is_authorized():
         progress_source = 'API TRAKT'
     elif conf.get('TARGET_OS') == 'android' and conf.get('PROGRESS_ADDON'):
@@ -103,17 +103,25 @@ def web_play_route() -> Response:
     force_select = request.form.get('force_select') == 'on'
     show_action = request.form.get('show_action', 'resume')
     
-    if media_type == 'movie' and query:
+    if not query:
+        flash("Indiquez un titre à rechercher.", "error")
+        return redirect(url_for('web.dashboard'))
+
+    if media_type == 'movie':
         logger.info(f"🎬 [Web] Recherche TMDB pour le film : '{query}'...")
         mid, title, _ = search_tmdb_movie(query)
         if mid:
             logger.info(f"🍿 [Web] Lancement du film '{title}' ({'manuel' if force_select else 'auto'})")
             executor.submit(worker_process, get_playback_url(mid, "movie", force_select=force_select))
             flash(f"🎬 Lancement : {title}")
-    elif media_type == 'show' and query:
+        else:
+            flash(f"Aucun film trouvé pour « {query} ». TMDB ne rattrape pas les fautes de frappe : vérifiez l'orthographe.", "error")
+    elif media_type == 'show':
         logger.info(f"📺 [Web] Recherche TMDB pour la série : '{query}'...")
         mid, title = search_tmdb_show(query)
-        if mid:
+        if not mid:
+            flash(f"Aucune série trouvée pour « {query} ». TMDB ne rattrape pas les fautes de frappe : vérifiez l'orthographe.", "error")
+        else:
             if show_action == 'specific':
                 s = request.form.get('season', type=int, default=1)
                 e = request.form.get('episode', type=int, default=1)
@@ -126,16 +134,23 @@ def web_play_route() -> Response:
                     logger.info(f"🍿 [Web] Lancement série '{title}' (Dernier Épisode S{ls}E{le})")
                     executor.submit(worker_process, get_playback_url(mid, "episode", ls, le, force_select))
                     flash(f"📺 Lancement dernier : {title} S{ls}E{le}")
+                else:
+                    flash(f"TMDB ne connaît pas le dernier épisode diffusé de « {title} ». Rien n'a été lancé.", "error")
             else:
-                ts, te = get_trakt_next_episode(mid)
-                if ts and te:
-                    logger.info(f"🍿 [Web] Reprise série via Trakt '{title}' (Saison {ts} Épisode {te})")
+                ts, te, issue = get_next_episode(mid)
+                if issue == PROGRESSION_OK:
+                    logger.info(f"🍿 [Web] Reprise de '{title}' (Saison {ts} Épisode {te})")
                     executor.submit(worker_process, get_playback_url(mid, "episode", ts, te, force_select))
                     flash(f"📺 Reprise : {title} S{ts}E{te}")
+                elif issue == PROGRESSION_INJOIGNABLE:
+                    # Surtout ne rien lancer : démarrer S1E1 sans savoir où en est
+                    # l'utilisateur est pire que de ne rien faire.
+                    logger.warning(f"⚠️ [Web] Progression de '{title}' illisible : aucun lancement.")
+                    flash(f"Impossible de savoir où vous en êtes dans « {title} » : aucune source de progression n'a répondu. Rien n'a été lancé.", "error")
                 else:
-                    logger.info(f"🍿 [Web] Pas d'historique Trakt pour '{title}', lancement S1E1.")
+                    logger.info(f"🍿 [Web] '{title}' jamais commencée, lancement S1E1.")
                     executor.submit(worker_process, get_playback_url(mid, "episode", 1, 1, force_select))
-                    flash(f"📺 Aucun historique Trakt. Lancement S1E1 : {title}")
+                    flash(f"📺 Série jamais commencée. Lancement S1E1 : {title}")
     return redirect(url_for('web.dashboard'))
 
 @web_bp.route('/wake-device', methods=['POST'])
