@@ -18,6 +18,21 @@ TOKEN_FILE: str = os.path.join(DATA_DIR, "trakt_tokens.json")
 APP_CONFIG_FILE: str = os.path.join(DATA_DIR, "config.json")
 DEBUG_MODE: bool = os.getenv("DEBUG_MODE", "false").lower() == "true"
 
+# Identifiants de l'application Trakt de MyCinema, utilisés par défaut pour que
+# l'utilisateur n'ait aucune application à créer : il lui suffit d'autoriser la
+# sienne par code d'appareil. Vides dans les sources — ils sont injectés à la
+# construction de l'image. Un utilisateur qui préfère sa propre application les
+# surcharge par TRAKT_CLIENT_ID / TRAKT_CLIENT_SECRET.
+# Note : le secret d'une application distribuée n'en est pas un (le flux par code
+# d'appareil l'exige au moment de l'échange) ; c'est la limite connue des clients
+# OAuth publics, et la raison d'être de la surcharge ci-dessus.
+DEFAULT_TRAKT_CLIENT_ID: str = ""
+DEFAULT_TRAKT_CLIENT_SECRET: str = ""
+
+# Marge de renouvellement du jeton d'accès : on rafraîchit un jour avant l'échéance
+# plutôt que d'attendre le premier 401 en pleine requête vocale.
+TOKEN_REFRESH_MARGIN_S: int = 24 * 3600
+
 logging.basicConfig(
     level=logging.DEBUG if DEBUG_MODE else logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
@@ -94,8 +109,8 @@ def load_trakt_config() -> Dict[str, str]:
     config: Dict[str, str] = {
         "access_token": os.getenv("TRAKT_ACCESS_TOKEN", ""),
         "refresh_token": os.getenv("TRAKT_REFRESH_TOKEN", ""),
-        "client_id": os.getenv("TRAKT_CLIENT_ID", ""),
-        "client_secret": os.getenv("TRAKT_CLIENT_SECRET", "")
+        "client_id": os.getenv("TRAKT_CLIENT_ID", DEFAULT_TRAKT_CLIENT_ID),
+        "client_secret": os.getenv("TRAKT_CLIENT_SECRET", DEFAULT_TRAKT_CLIENT_SECRET)
     }
     if os.path.exists(TOKEN_FILE):
         try:
@@ -109,10 +124,13 @@ def load_trakt_config() -> Dict[str, str]:
 def load_trakt_token() -> Optional[str]:
     return load_trakt_config()["access_token"] or None
 
-def save_trakt_token_data(access_token: str, refresh_token: str, client_id: Optional[str] = None, client_secret: Optional[str] = None) -> bool:
+def save_trakt_token_data(access_token: str, refresh_token: str, client_id: Optional[str] = None, client_secret: Optional[str] = None, expires_in: Optional[Any] = None) -> bool:
     data: Dict[str, Any] = {"access_token": access_token, "refresh_token": refresh_token, "updated_at": time.time()}
     if client_id: data["client_id"] = client_id
     if client_secret: data["client_secret"] = client_secret
+    if expires_in:
+        try: data["expires_at"] = time.time() + float(expires_in)
+        except (TypeError, ValueError): pass
     try:
         with open(TOKEN_FILE, 'w', encoding='utf-8') as f: json.dump(data, f)
         return True
@@ -131,10 +149,31 @@ def refresh_trakt_token_online() -> Optional[str]:
         }, timeout=10)
         if r.status_code == 200:
             data = r.json()
-            save_trakt_token_data(data['access_token'], data['refresh_token'], cfg["client_id"], cfg["client_secret"])
+            save_trakt_token_data(data['access_token'], data['refresh_token'], cfg["client_id"], cfg["client_secret"], data.get('expires_in'))
+            logger.info("🔑 [Trakt] Jeton d'accès renouvelé.")
             return data['access_token']
-    except Exception: pass
+        logger.error(f"❌ [Trakt] Renouvellement du jeton refusé (HTTP {r.status_code}). Une nouvelle autorisation est nécessaire.")
+    except Exception as e:
+        logger.error(f"❌ [Trakt] Erreur au renouvellement du jeton : {e}")
     return None
+
+def get_valid_trakt_token() -> Optional[str]:
+    """Jeton d'accès Trakt utilisable, renouvelé d'avance s'il approche de l'expiration.
+
+    Renvoie None si aucune autorisation n'existe. Le renouvellement anticipé évite
+    qu'une demande vocale tombe sur un 401 : à ce moment-là il est trop tard pour
+    rattraper quoi que ce soit dans le délai qu'Alexa accorde.
+    """
+    cfg = load_trakt_config()
+    token = cfg.get("access_token")
+    if not token: return None
+    expires_at = cfg.get("expires_at")
+    if expires_at:
+        try:
+            if float(expires_at) - time.time() < TOKEN_REFRESH_MARGIN_S:
+                return refresh_trakt_token_online() or token
+        except (TypeError, ValueError): pass
+    return token
 
 def get_kodi_url(conf: Dict[str, str]) -> Optional[str]:
     if conf.get("SHIELD_IP") and conf.get("KODI_PORT"):

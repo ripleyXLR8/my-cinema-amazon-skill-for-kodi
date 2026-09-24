@@ -43,3 +43,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Identifiants de l'application Trakt de MyCinema, injectés depuis les
+          # secrets du dépôt : ils ne figurent jamais dans les sources.
+          # S'ils sont absents, l'image se construit quand même — la page de
+          # réglages invite alors l'utilisateur à fournir sa propre application.
+          build-args: |
+            TRAKT_CLIENT_ID=${{ secrets.TRAKT_CLIENT_ID }}
+            TRAKT_CLIENT_SECRET=${{ secrets.TRAKT_CLIENT_SECRET }}

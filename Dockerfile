@@ -13,6 +13,17 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Identifiants de l'application Trakt de MyCinema, injectés à la construction pour
+# que l'utilisateur n'ait aucune application à créer : il lui suffit d'autoriser
+# la sienne depuis la page de réglages.
+# Le secret d'un client OAuth public n'en est pas vraiment un — il est extractible
+# de l'image, comme chez tous les addons Kodi équivalents. Qui préfère sa propre
+# application surcharge simplement ces deux variables à l'exécution.
+ARG TRAKT_CLIENT_ID=""
+ARG TRAKT_CLIENT_SECRET=""
+ENV TRAKT_CLIENT_ID=$TRAKT_CLIENT_ID \
+    TRAKT_CLIENT_SECRET=$TRAKT_CLIENT_SECRET
+
 COPY . .
 
 # Déclaration du Healthcheck pour Unraid/Docker

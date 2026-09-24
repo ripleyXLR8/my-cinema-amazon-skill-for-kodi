@@ -7,7 +7,7 @@ import paramiko
 import logging
 from typing import Optional, Tuple, Dict, Any
 from wakeonlan import send_magic_packet
-from modules.config import logger, get_app_config, get_kodi_url, load_trakt_token, load_trakt_config, refresh_trakt_token_online
+from modules.config import logger, get_app_config, get_kodi_url
 from modules.adb import send_adb_command
 
 def is_device_online(ip: Optional[str]) -> bool:
@@ -120,27 +120,25 @@ def get_tmdb_last_aired(tmdb_id: int) -> Tuple[Optional[int], Optional[int]]:
     return None, None
 
 def get_trakt_next_episode(tmdb_show_id: int) -> Tuple[Optional[int], Optional[int]]:
-    # Source n°1 : le cache Trakt de l'addon Kodi (aucune clé API requise)
-    from modules.progress import get_next_episode_from_kodi
-    s, e, source_ok = get_next_episode_from_kodi(tmdb_show_id)
-    if source_ok: return s, e
+    """Épisode à reprendre, demandé aux sources de progression dans l'ordre.
 
-    # Source n°2 : l'API Trakt avec la clé personnelle (VIP requis depuis le 30/07/2026)
-    token = load_trakt_token()
-    cfg = load_trakt_config()
-    if not cfg.get("client_id") or not token: return None, None
-    headers = {'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': cfg["client_id"], 'Authorization': f'Bearer {token}'}
-    try:
-        r = requests.get(f"https://api.trakt.tv/search/tmdb/{tmdb_show_id}?type=show", headers=headers, timeout=5)
-        if r.status_code in (401, 403):
-            logger.error(f"❌ [Trakt] API refusée (HTTP {r.status_code}) : jeton expiré ou application API désactivée (VIP requis).")
-            return None, None
-        trakt_id = r.json()[0]['show']['ids']['trakt']
-        r = requests.get(f"https://api.trakt.tv/shows/{trakt_id}/progress/watched", headers=headers, timeout=5)
-        next_ep = r.json().get('next_episode')
-        if next_ep: return next_ep['season'], next_ep['number']
-    except Exception as e:
-        logger.error(f"Erreur récupération prochain épisode Trakt pour TMDB {tmdb_show_id}: {e}")
+    L'ordre n'est pas arbitraire : Trakt vient en premier parce que c'est la seule
+    source qui répond quand l'appareil Kodi est éteint — et c'est précisément le
+    moment où l'on demande à Alexa de reprendre une série. Le cache de l'addon
+    prend le relais pour qui n'a pas connecté de compte Trakt.
+
+    Chaque source renvoie un drapeau « source disponible » : on ne passe à la
+    suivante que si la précédente n'a pas pu répondre. Une source qui répond
+    « rien à reprendre » fait donc autorité, elle n'est pas contredite par une
+    source moins fiable.
+    """
+    from modules.progress import get_next_episode_from_kodi
+    from modules.trakt import get_next_episode as get_next_episode_from_trakt
+
+    for source in (get_next_episode_from_trakt, get_next_episode_from_kodi):
+        s, e, source_ok = source(tmdb_show_id)
+        if source_ok: return s, e
+    logger.warning(f"⚠️ [Progression] Aucune source n'a pu répondre pour TMDB {tmdb_show_id}.")
     return None, None
 
 def get_playback_url(tmdb_id: int, media_type: str, season: Optional[int] = None, episode: Optional[int] = None, force_select: bool = False) -> str:

@@ -28,7 +28,7 @@ https://github.com/user-attachments/assets/da996a8d-55bf-4b13-b84a-542da01ceb5d
 * **🖥️ Web UI Control Panel:** A real-time dashboard to monitor your Kodi connection, TMDB API status and Trakt.tv synchronization.
 * **🗣️ Multi-Language Support:** Full native support for **English** and **French** commands and responses.
 * **⚡ Smart Power Management:** Automatically handles device wake-up (WoL/ADB for Shield) or system commands (SSH for LibreELEC) before playback.
-* **🧠 Resume without a Trakt API key:** Ask Alexa to *"Resume [Show]"* to play your next episode. Progress is read from the Trakt cache of your Kodi add-on (POV by default, `PROGRESS_ADDON`) over ADB, since Trakt now restricts personal API apps to VIP members.
+* **🧠 Resume where you left off:** Ask Alexa to *"Resume [Show]"* to play your next episode. Progress comes from Trakt when an account is connected — so it works **even with the device switched off** — and falls back to the Trakt cache of your Kodi add-on (POV by default, `PROGRESS_ADDON`) read over ADB.
 * **🔍 TMDB Integration:** Accurate identification of movies and TV shows with rich metadata support.
 * **🔒 Secure Webhook:** Cryptographic validation of Alexa requests to ensure only your authorized skill can control your media center.
 
@@ -88,12 +88,18 @@ services:
       - KODI_PASS=kodi
 ```
 
-### 3. 🔑 Trakt.tv Configuration (The Easy Way)
+### 3. 🔑 Trakt.tv Connection (Optional, but recommended)
 
-1. With the container running, go to **`http://YOUR_SERVER_IP:5000/settings`** in your browser.
-2. Enter your Trakt **Client ID** and **Client Secret**.
-3. Click **"Get PIN"**, authorize the app, and copy the code.
-4. Paste the PIN and click **"Generate Tokens"** to complete the link.
+Connecting a Trakt account lets MyCinema resume a show **even while your Kodi device is switched off** — which is exactly when you ask Alexa to resume one. Without it, progress is read from your add-on's cache over ADB, which requires the device to be awake and reachable.
+
+1. With the container running, go to **`http://YOUR_SERVER_IP:5000/settings`**.
+2. Click **"Connect my Trakt account"**. An 8-character code appears.
+3. Enter that code on [trakt.tv/activate](https://trakt.tv/activate). The page refreshes itself once you approve.
+
+There is no app to create: MyCinema ships its own Trakt application. Two things worth knowing:
+
+* **A free Trakt account is limited to 2 connected community apps.** Your streaming add-on (POV, Seren, The Crew…) already uses one, so MyCinema will take the second. Check yours at [trakt.tv/settings/apps/connected](https://app.trakt.tv/settings/apps/connected).
+* **Prefer your own Trakt application?** Create one at [developer.trakt.tv/apps](https://developer.trakt.tv/apps) (free; requires a linked GitHub account) with redirect URI `urn:ietf:wg:oauth:2.0:oob`, then set `TRAKT_CLIENT_ID` and `TRAKT_CLIENT_SECRET` on the container. They override the bundled ones.
 
 ### 4. 🎙️ Alexa Skill Setup
 

@@ -1,3 +1,11 @@
+## [2.8.0] - 2026-09-24
+- 🔑 **Connexion Trakt rétablie, par code d'appareil.** Un bouton dans les réglages affiche un code à saisir sur `trakt.tv/activate` : plus de Client ID ni de PIN à recopier. L'image embarque l'application Trakt de MyCinema, donc **l'utilisateur n'a aucune application à créer** ; `TRAKT_CLIENT_ID` / `TRAKT_CLIENT_SECRET` restent disponibles pour qui préfère la sienne.
+- 🧠 **La reprise fonctionne appareil éteint.** La progression est demandée à Trakt en premier — seule source joignable quand la Shield dort, ce qui est précisément le moment où l'on demande à Alexa de reprendre une série — et le cache de l'addon Kodi prend le relais sans compte Trakt. Une source qui répond « rien à reprendre » fait autorité et n'est pas contredite par une source moins fiable.
+- ⏱️ **Le jeton d'accès est renouvelé un jour avant son échéance**, au lieu d'attendre le premier 401 : en pleine requête vocale, il est trop tard pour rattraper quoi que ce soit dans le délai qu'Alexa accorde. Son expiration est désormais enregistrée (`expires_at`), ce qui n'était pas le cas.
+- 🐛 **Mise à jour depuis une version à assistant PIN** : le `trakt_tokens.json` existant est fusionné par-dessus les variables d'environnement, si bien qu'un `client_id` périmé masquait celui embarqué — la page annonçait « compte connecté », la reprise prenait un 403 en silence, et la reconnexion échouait elle aussi faute d'utiliser la bonne application. Les réglages distinguent désormais « connecté », « autorisation refusée » et « vérification impossible », et la déconnexion repart des identifiants embarqués.
+- ⚠️ **À savoir** : un compte Trakt gratuit est limité à **2 applications connectées**. Votre addon de streaming en occupe déjà une ; MyCinema prendra la seconde.
+- 🐛 Correction : la section Trakt du README décrivait encore l'assistant PIN retiré en 2.7.1, qui n'existait plus.
+
 ## [2.7.1] - 2026-09-21
 - 🗑️ **Assistant Trakt retiré des réglages** : créer une application API Trakt exige un abonnement VIP. L'API Trakt reste utilisable en secours par variables d'environnement (`TRAKT_CLIENT_ID`, `TRAKT_ACCESS_TOKEN`, ...) ou par un `trakt_tokens.json` existant.
 - ⚙️ Nouveau réglage `PROGRESS_ADDON` (addon Kodi dont le cache Trakt donne l'épisode suivant) ; le dashboard affiche la source de reprise utilisée.
