@@ -8,7 +8,8 @@ from flask.wrappers import Response
 from typing import Union, Tuple, Dict, Any, Optional
 
 from modules.config import logger, get_app_config, get_text, LOG_FILE
-from modules.logic import is_device_online, is_device_awake, is_kodi_responsive, search_tmdb_movie, search_tmdb_show, get_next_episode, PROGRESSION_OK, PROGRESSION_INJOIGNABLE, get_tmdb_last_aired, check_episode_exists, get_playback_url, worker_process, get_kodi_active_player, get_kodi_player_item, change_source_worker
+from modules.logic import is_device_online, is_device_awake, is_kodi_responsive, search_tmdb_movie, search_tmdb_show, get_next_episode, PROGRESSION_OK, PROGRESSION_INJOIGNABLE, get_tmdb_last_aired, check_episode_exists, get_playback_url, resoudre_lecture, worker_process, get_kodi_active_player, get_kodi_player_item, change_source_worker
+from modules import lecteurs
 from modules.adb import ADB_STATE
 from modules.extensions import executor
 from ask_sdk_webservice_support.verifier import RequestVerifier
@@ -160,11 +161,13 @@ def alexa_handler() -> Union[Tuple[Response, int], Response]:
         elif intent_name == "ResumeTVShowIntent":
             query = slots.get('ShowName', {}).get('value')
             if not query: return jsonify(build_res(get_text("ask_show", lang), False))
+            query, lecteur = lecteurs.extraire_motcle(query)
             mid, title = search_tmdb_show(query, lang=lang)
             if not mid: return jsonify(build_res(get_text("show_not_found", lang, query)))
             s, e, issue = get_next_episode(mid)
             if issue == PROGRESSION_OK:
-                executor.submit(worker_process, get_playback_url(mid, "episode", s, e, force_select))
+                _url, _verbe = resoudre_lecture(mid, "episode", s, e, force_select, titre=title, addonid=lecteur)
+                executor.submit(worker_process, _url, _verbe)
                 return jsonify(build_res(get_text("resume_show", lang, title, s, e, manual_msg)))
             if issue == PROGRESSION_INJOIGNABLE:
                 # Ne pas répondre « pas de progression » : on n'en sait rien.
@@ -173,37 +176,43 @@ def alexa_handler() -> Union[Tuple[Response, int], Response]:
 
         elif intent_name == "PlayMovieIntent":
             query = slots.get('MovieName', {}).get('value')
+            query, lecteur = lecteurs.extraire_motcle(query)
             mid, title, myear = search_tmdb_movie(query, year=slots.get('MovieYear', {}).get('value'), lang=lang)
             if mid:
-                executor.submit(worker_process, get_playback_url(mid, "movie", force_select=force_select))
+                _url, _verbe = resoudre_lecture(mid, "movie", force_select=force_select, titre=title, addonid=lecteur)
+                executor.submit(worker_process, _url, _verbe)
                 return jsonify(build_res(get_text("launch_movie", lang, title, f" de {myear}" if myear else "", manual_msg)))
             return jsonify(build_res(get_text("movie_not_found", lang, query)))
 
         elif intent_name == "PlayTVShowIntent":
             query = slots.get('ShowName', {}).get('value')
+            query, lecteur = lecteurs.extraire_motcle(query)
             s, e = slots.get('Season', {}).get('value'), slots.get('Episode', {}).get('value')
             mid, title = search_tmdb_show(query, lang=lang) if query else (attributes.get('pending_show_id'), attributes.get('pending_show_name'))
             if not mid: return jsonify(build_res(get_text("show_not_found", lang, query)))
             if s and e:
                 if check_episode_exists(mid, s, e):
-                    executor.submit(worker_process, get_playback_url(mid, "episode", s, e, force_select))
+                    _url, _verbe = resoudre_lecture(mid, "episode", s, e, force_select, titre=title, addonid=lecteur)
+                    executor.submit(worker_process, _url, _verbe)
                     return jsonify(build_res(get_text("launch_show", lang, title, s, e, manual_msg)))
                 return jsonify(build_res(get_text("episode_not_found", lang), False))
             ts, te, _ = get_next_episode(mid)
             ls, le = get_tmdb_last_aired(mid)
-            return jsonify(build_res(get_text("ask_resume", lang, title, ts, te) if ts else get_text("ask_start", lang, title), False, {"pending_show_id": mid, "pending_show_name": title, "step": "ask_playback_method", "force_select": force_select, "trakt_next_s": ts, "trakt_next_e": te, "tmdb_last_s": ls, "tmdb_last_e": le}))
+            return jsonify(build_res(get_text("ask_resume", lang, title, ts, te) if ts else get_text("ask_start", lang, title), False, {"pending_show_id": mid, "pending_show_name": title, "lecteur": lecteur, "step": "ask_playback_method", "force_select": force_select, "trakt_next_s": ts, "trakt_next_e": te, "tmdb_last_s": ls, "tmdb_last_e": le}))
 
         elif intent_name in ["AMAZON.YesIntent", "ResumeIntent", "ReprendreIntent"]:
             if attributes.get('step') == 'ask_playback_method' and attributes.get('trakt_next_s'):
                 ts, te = attributes['trakt_next_s'], attributes['trakt_next_e']
-                executor.submit(worker_process, get_playback_url(attributes['pending_show_id'], "episode", ts, te, force_select))
+                _url, _verbe = resoudre_lecture(attributes['pending_show_id'], "episode", ts, te, force_select, titre=attributes.get('pending_show_name',''), addonid=attributes.get('lecteur'))
+                executor.submit(worker_process, _url, _verbe)
                 return jsonify(build_res(get_text("resume_show", lang, attributes['pending_show_name'], ts, te, get_text("manual_select", lang) if force_select else "")))
             return jsonify(build_res(get_text("nothing_pending", lang)))
 
         elif intent_name == "LatestEpisodeIntent":
             if attributes.get('step') == 'ask_playback_method':
                 ls, le = attributes['tmdb_last_s'], attributes['tmdb_last_e']
-                executor.submit(worker_process, get_playback_url(attributes['pending_show_id'], "episode", ls, le, force_select))
+                _url, _verbe = resoudre_lecture(attributes['pending_show_id'], "episode", ls, le, force_select, titre=attributes.get('pending_show_name',''), addonid=attributes.get('lecteur'))
+                executor.submit(worker_process, _url, _verbe)
                 return jsonify(build_res(get_text("launch_last", lang, attributes['pending_show_name'])))
             return jsonify(build_res(get_text("unavailable", lang)))
 
