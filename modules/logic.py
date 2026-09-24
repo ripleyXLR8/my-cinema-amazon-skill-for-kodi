@@ -6,6 +6,7 @@ import requests
 import paramiko
 import logging
 from typing import Optional, Tuple, Dict, Any
+from urllib.parse import unquote
 from wakeonlan import send_magic_packet
 from modules.config import logger, get_app_config, get_kodi_url
 from modules.adb import send_adb_command
@@ -193,17 +194,98 @@ def resoudre_lecture(tmdb_id: int, media_type: str, season: Optional[int] = None
             logger.warning(f"⚠️ [Lecture] Pas de recette pour {cible}, repli sur TMDb Helper.")
     return get_playback_url(tmdb_id, media_type, season, episode, force_select), 'play'
 
-def worker_process(plugin_url: str, verbe: str = 'play') -> None:
+def _kodi_rpc(methode: str, params: Optional[Dict[str, Any]] = None,
+              timeout: int = 5) -> Optional[Dict[str, Any]]:
+    """Appel JSON-RPC brut. Renvoie le champ 'result', ou None si l'appel échoue."""
+    conf = get_app_config()
+    url = get_kodi_url(conf)
+    if not url:
+        return None
+    auth = (conf.get("KODI_USER"), conf.get("KODI_PASS")) if conf.get("KODI_USER") else None
+    try:
+        r = requests.post(url, json={"jsonrpc": "2.0", "method": methode,
+                                     "params": params or {}, "id": 1},
+                          auth=auth, timeout=timeout)
+        return r.json().get('result')
+    except Exception as e:
+        logger.error(f"❌ [Kodi] {methode} a échoué : {e}")
+        return None
+
+
+def dialogue_modal_actif() -> bool:
+    """Une boîte de dialogue modale bloque-t-elle l'écran ?
+
+    Kodi REFUSE GUI.ActivateWindow tant qu'une modale est ouverte (« Activate of
+    window refused because there are active modal dialogs ») — et le JSON-RPC
+    répond quand même OK. Sans ce test on annonce une lecture qui n'a jamais
+    démarré. Deux cas courants : un addon a laissé sa liste de sources affichée,
+    ou sa recherche précédente tourne encore derrière sa boîte d'attente.
+    """
+    res = _kodi_rpc('XBMC.GetInfoBooleans',
+                    {'booleans': ['System.HasActiveModalDialog']}, timeout=4)
+    if not res:
+        return False   # injoignable : on n'invente pas un blocage
+    return bool(res.get('System.HasActiveModalDialog'))
+
+
+def liberer_ecran(tentatives: int = 3) -> bool:
+    """Ferme ce qui reste ouvert à l'écran. True si la voie est libre.
+
+    Un nouvel ordre vocal prime sur une liste de sources qu'on avait laissée
+    affichée : on la referme, plutôt que de laisser l'ordre se perdre en
+    silence.
+    """
+    if not dialogue_modal_actif():
+        return True
+    for essai in range(1, tentatives + 1):
+        logger.warning(f"⚠️ [Kodi] Boîte de dialogue ouverte, fermeture ({essai}/{tentatives})…")
+        _kodi_rpc('Input.Back', timeout=4)
+        time.sleep(0.8)
+        if not dialogue_modal_actif():
+            logger.info("✅ [Kodi] Écran libéré.")
+            return True
+    logger.error("❌ [Kodi] Une boîte de dialogue reste ouverte.")
+    return False
+
+
+def _chemin_charge(plugin_url: str, delai: float = 8.0) -> bool:
+    """Kodi a-t-il bien pris ce chemin ?
+
+    Container.FolderPath rend l'URL exacte du dossier ouvert. Il prouve que Kodi
+    a ACCEPTÉ l'ordre — pas que l'addon ait trouvé quelque chose : une recherche
+    sans résultat est une réponse, pas une panne, et ce n'est pas à nous d'en
+    juger. C'est néanmoins le seul témoin fiable du refus : quand une modale
+    avale l'ordre, ce chemin ne bouge pas. L'identifiant de fenêtre, lui, ne vaut
+    rien ici — il vaut déjà 10025 quand on était déjà dans Vidéos, et les addons
+    posent leurs propres fenêtres par-dessus une navigation pourtant réussie.
+    """
+    attendu = unquote(plugin_url)
+    fin = time.time() + delai
+    while time.time() < fin:
+        courant = (_kodi_rpc('XBMC.GetInfoLabels',
+                             {'labels': ['Container.FolderPath']}, timeout=4)
+                   or {}).get('Container.FolderPath', '')
+        if courant == plugin_url or unquote(courant) == attendu:
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def worker_process(plugin_url: str, verbe: str = 'play') -> bool:
     """Envoie l'ordre à Kodi. Le verbe depend de ce que rend l'addon vise.
 
     Player.Open sert a LIRE, GUI.ActivateWindow a NAVIGUER. Demander a Kodi de
     lire un dossier echoue en silence et le ramene a l'accueil : c'est le cas
     des addons qui presentent d'abord une liste de resultats.
+
+    Renvoie True si l'ordre a visiblement abouti. Seule la navigation est
+    vérifiée : une lecture peut légitimement mettre une minute à démarrer, le
+    temps que l'addon interroge ses sources, et crier trop tôt serait faux.
     """
-    if not wake_and_start_kodi(): return
+    if not wake_and_start_kodi(): return False
     conf = get_app_config()
     url = get_kodi_url(conf)
-    if not url: return
+    if not url: return False
     auth = (conf.get("KODI_USER"), conf.get("KODI_PASS")) if conf.get("KODI_USER") else None
     if verbe == 'activate':
         methode = "GUI.ActivateWindow"
@@ -211,12 +293,23 @@ def worker_process(plugin_url: str, verbe: str = 'play') -> None:
     else:
         methode = "Player.Open"
         params = {"item": {"file": plugin_url}}
-    logger.info(f"▶️ [Lecture] Envoi de la requête JSON-RPC vers Kodi ({methode})")
-    try:
-        requests.post(url, json={"jsonrpc": "2.0", "method": methode, "params": params, "id": 1}, auth=auth, timeout=5)
-        logger.info("✅ [Lecture] Ordre pris en compte par Kodi.")
-    except Exception as e:
-        logger.error(f"❌ [Lecture] Erreur exécution requête Kodi {methode}: {e}")
+    for tentative in (1, 2):
+        liberer_ecran()
+        logger.info(f"▶️ [Lecture] Envoi de la requête JSON-RPC vers Kodi ({methode})")
+        try:
+            requests.post(url, json={"jsonrpc": "2.0", "method": methode,
+                                     "params": params, "id": 1}, auth=auth, timeout=5)
+        except Exception as e:
+            logger.error(f"❌ [Lecture] Erreur exécution requête Kodi {methode}: {e}")
+            return False
+        if verbe != 'activate' or _chemin_charge(plugin_url):
+            logger.info("✅ [Lecture] Ordre pris en compte par Kodi.")
+            return True
+        if tentative == 1:
+            logger.warning("⚠️ [Lecture] Kodi n'a pas ouvert la page, nouvelle tentative…")
+    logger.error("❌ [Lecture] Kodi a ignoré l'ordre : la page n'a pas été ouverte.")
+    return False
+
 
 def get_kodi_active_player() -> Optional[int]:
     conf = get_app_config()
