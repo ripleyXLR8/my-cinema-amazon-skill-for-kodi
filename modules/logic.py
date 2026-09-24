@@ -77,7 +77,14 @@ def search_tmdb_movie(query: str, year: Optional[str] = None, lang: str = "fr") 
     if year: params['year'] = year
     try:
         r = requests.get("https://api.themoviedb.org/3/search/movie", params=params, timeout=5)
-        res = r.json()['results'][0]
+        # Zero resultat n'est pas une anomalie : c'est une reponse. La traiter en
+        # exception faisait apparaitre un "list index out of range" dans les
+        # journaux, qui donne a lire un bug la ou il n'y a qu'une faute de frappe.
+        resultats = r.json().get('results') or []
+        if not resultats:
+            logger.info(f"🔎 [TMDB] Aucun film ne correspond à '{query}'.")
+            return None, None, None
+        res = resultats[0]
         return res['id'], res['title'], res.get('release_date', '')[:4]
     except Exception as e:
         logger.error(f"Erreur recherche film TMDB '{query}': {e}")
@@ -90,7 +97,11 @@ def search_tmdb_show(query: str, lang: str = "fr") -> Tuple[Optional[int], Optio
     params = {"api_key": tmdb_key, "query": query, "language": "fr-FR" if lang == "fr" else "en-US"}
     try:
         r = requests.get("https://api.themoviedb.org/3/search/tv", params=params, timeout=5)
-        res = r.json()['results'][0]
+        resultats = r.json().get('results') or []
+        if not resultats:
+            logger.info(f"🔎 [TMDB] Aucune série ne correspond à '{query}'.")
+            return None, None
+        res = resultats[0]
         return res['id'], res['name']
     except Exception as e:
         logger.error(f"Erreur recherche série TMDB '{query}': {e}")
