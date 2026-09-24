@@ -68,6 +68,41 @@
                     <input type="text" name="PLAYER_SELECT" value="{{ conf.PLAYER_SELECT }}" placeholder="ex: fenlight_select.json" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none">
                 </div>
 
+            <h4 class="text-sm font-semibold text-slate-400 mt-4 mb-2">Contrôle des lecteurs</h4>
+            <div>
+                <label class="block text-xs font-medium text-slate-400 mb-1">Comment MyCinema commande vos addons Kodi</label>
+                <select name="CONTROL_MODE" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="tmdb_helper" {% if conf.CONTROL_MODE != 'direct' %}selected{% endif %}>Via TMDb Helper (recommandé — compatible avec tous les lecteurs)</option>
+                    <option value="direct" {% if conf.CONTROL_MODE == 'direct' %}selected{% endif %}>Contrôle direct (plus rapide, addons reconnus seulement)</option>
+                </select>
+                <p class="text-slate-500 text-xs mt-1">TMDb Helper sert de couche d'abstraction : il sait piloter n'importe quel lecteur. Le contrôle direct est plus rapide et évite son détour, mais ne fonctionne qu'avec les addons dont MyCinema connaît la recette. En cas de doute, laissez TMDb Helper.</p>
+            </div>
+
+            <div class="mt-3 p-3 bg-slate-900/60 border border-slate-700 rounded-lg">
+                <p class="text-xs font-medium text-slate-400 mb-2">Addons détectés sur votre appareil et pilotables directement</p>
+                {% if pilotables %}
+                    {% for a in pilotables %}
+                    <div class="flex flex-wrap items-center gap-3 py-1.5 border-b border-slate-800 last:border-0">
+                        <label class="flex items-center gap-2 min-w-[190px]">
+                            <input type="checkbox" name="lecteur_{{ a.addonid }}" value="1" class="accent-blue-500"
+                                   {% if a.addonid in lecteurs_choisis %}checked{% endif %}>
+                            <span class="text-slate-200 text-sm">{{ a.nom }}</span>
+                            <span class="text-slate-500 text-xs">{{ a.version }}</span>
+                        </label>
+                        <input type="text" name="motcle_{{ a.addonid }}" value="{{ lecteurs_choisis.get(a.addonid, '') }}"
+                               placeholder="mot-clé vocal (ex : en français)"
+                               class="flex-1 min-w-[200px] bg-slate-900 border border-slate-700 rounded p-1.5 text-white text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        {% if not a.episode_exact %}
+                        <span class="text-amber-400/80 text-xs">ne vise pas un épisode précis</span>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                    <p class="text-slate-500 text-xs mt-2">Dites le mot-clé à la suite du titre : « lance <em>Le Parrain</em> en français ». Laissez un mot-clé <strong>vide</strong> pour désigner le lecteur employé par défaut, quand aucun mot-clé n'est prononcé.</p>
+                {% else %}
+                    <p class="text-slate-500 text-sm">Aucun addon pilotable détecté. Soit Kodi n'est pas joignable en ce moment, soit aucun des addons installés n'a de recette connue — dans ce cas, laissez le mode « via TMDb Helper ».</p>
+                {% endif %}
+            </div>
+
             <h4 class="text-sm font-semibold text-slate-400 mt-4 mb-2">Reprise des séries</h4>
             <div>
                 <label class="block text-xs font-medium text-slate-400 mb-1">Addon Kodi synchronisé avec Trakt (son cache donne l'épisode suivant)</label>

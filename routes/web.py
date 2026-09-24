@@ -9,7 +9,8 @@ from wakeonlan import send_magic_packet
 
 from modules.config import logger, get_app_config, save_app_config, get_kodi_url
 from modules import trakt
-from modules.logic import is_device_online, is_device_awake, is_kodi_responsive, search_tmdb_movie, search_tmdb_show, get_next_episode, PROGRESSION_OK, PROGRESSION_INJOIGNABLE, get_tmdb_last_aired, get_playback_url, worker_process
+from modules import lecteurs
+from modules.logic import is_device_online, is_device_awake, is_kodi_responsive, search_tmdb_movie, search_tmdb_show, get_next_episode, PROGRESSION_OK, PROGRESSION_INJOIGNABLE, get_tmdb_last_aired, get_playback_url, resoudre_lecture, worker_process
 from modules.extensions import executor
 
 web_bp = Blueprint('web', __name__)
@@ -54,18 +55,32 @@ def settings() -> Union[str, Response]:
         action = request.form.get("action")
         if action == "save_config":
             current_config = get_app_config()
-            for k in ["TMDB_API_KEY", "ALEXA_SKILL_ID", "TARGET_OS", "SHIELD_IP", "SHIELD_MAC", "KODI_PORT", "KODI_USER", "KODI_PASS", "SSH_USER", "SSH_PASS", "PLAYER_DEFAULT", "PLAYER_SELECT", "PROGRESS_ADDON"]:
+            for k in ["TMDB_API_KEY", "ALEXA_SKILL_ID", "TARGET_OS", "SHIELD_IP", "SHIELD_MAC", "KODI_PORT", "KODI_USER", "KODI_PASS", "SSH_USER", "SSH_PASS", "PLAYER_DEFAULT", "PLAYER_SELECT", "PROGRESS_ADDON", "CONTROL_MODE"]:
                 current_config[k] = request.form.get(k, "").strip()
                 
+            lecteurs_choisis = []
+            for cle in request.form:
+                if not cle.startswith('lecteur_'):
+                    continue
+                addonid = cle[len('lecteur_'):]
+                motcle = request.form.get('motcle_' + addonid, '').strip()
+                lecteurs_choisis.append('%s:%s' % (addonid, motcle))
+            current_config['DIRECT_PLAYERS'] = '|'.join(lecteurs_choisis)
+
             if save_app_config(current_config): 
                 logger.info("⚙️ [Config] Configuration système sauvegardée.")
                 flash("Config sauvegardée avec succès !", "success")
         return redirect(url_for('web.settings'))
     authorized = trakt.is_authorized()
     trakt_state, trakt_account = trakt.check_authorization() if authorized else ("none", None)
+    # N'afficher que les addons a la fois INSTALLES et dont la recette est
+    # connue : une case a cocher sans recette ne menerait nulle part.
+    pilotables = lecteurs.addons_pilotables()
+    choisis = {l['addonid']: l['motcle'] for l in lecteurs.lecteurs_configures()}
     return render_template('settings.html', version=current_app.config['APP_VERSION'], conf=get_app_config(),
         trakt_configured=trakt.is_configured(), trakt_authorized=authorized,
-        trakt_state=trakt_state, trakt_account=trakt_account)
+        trakt_state=trakt_state, trakt_account=trakt_account,
+        pilotables=pilotables, lecteurs_choisis=choisis)
 
 @web_bp.route('/trakt/connect', methods=['POST'])
 def trakt_connect() -> Response:
@@ -112,7 +127,8 @@ def web_play_route() -> Response:
         mid, title, _ = search_tmdb_movie(query)
         if mid:
             logger.info(f"🍿 [Web] Lancement du film '{title}' ({'manuel' if force_select else 'auto'})")
-            executor.submit(worker_process, get_playback_url(mid, "movie", force_select=force_select))
+            _url, _verbe = resoudre_lecture(mid, "movie", force_select=force_select)
+            executor.submit(worker_process, _url, _verbe)
             flash(f"🎬 Lancement : {title}")
         else:
             flash(f"Aucun film trouvé pour « {query} ». TMDB ne rattrape pas les fautes de frappe : vérifiez l'orthographe.", "error")
@@ -126,13 +142,15 @@ def web_play_route() -> Response:
                 s = request.form.get('season', type=int, default=1)
                 e = request.form.get('episode', type=int, default=1)
                 logger.info(f"🍿 [Web] Lancement série '{title}' (Saison {s} Épisode {e})")
-                executor.submit(worker_process, get_playback_url(mid, "episode", s, e, force_select))
+                _url, _verbe = resoudre_lecture(mid, "episode", s, e, force_select)
+                executor.submit(worker_process, _url, _verbe)
                 flash(f"📺 Lancement : {title} S{s}E{e}")
             elif show_action == 'latest':
                 ls, le = get_tmdb_last_aired(mid)
                 if ls and le:
                     logger.info(f"🍿 [Web] Lancement série '{title}' (Dernier Épisode S{ls}E{le})")
-                    executor.submit(worker_process, get_playback_url(mid, "episode", ls, le, force_select))
+                    _url, _verbe = resoudre_lecture(mid, "episode", ls, le, force_select)
+                    executor.submit(worker_process, _url, _verbe)
                     flash(f"📺 Lancement dernier : {title} S{ls}E{le}")
                 else:
                     flash(f"TMDB ne connaît pas le dernier épisode diffusé de « {title} ». Rien n'a été lancé.", "error")
@@ -140,7 +158,8 @@ def web_play_route() -> Response:
                 ts, te, issue = get_next_episode(mid)
                 if issue == PROGRESSION_OK:
                     logger.info(f"🍿 [Web] Reprise de '{title}' (Saison {ts} Épisode {te})")
-                    executor.submit(worker_process, get_playback_url(mid, "episode", ts, te, force_select))
+                    _url, _verbe = resoudre_lecture(mid, "episode", ts, te, force_select)
+                    executor.submit(worker_process, _url, _verbe)
                     flash(f"📺 Reprise : {title} S{ts}E{te}")
                 elif issue == PROGRESSION_INJOIGNABLE:
                     # Surtout ne rien lancer : démarrer S1E1 sans savoir où en est
@@ -149,7 +168,8 @@ def web_play_route() -> Response:
                     flash(f"Impossible de savoir où vous en êtes dans « {title} » : aucune source de progression n'a répondu. Rien n'a été lancé.", "error")
                 else:
                     logger.info(f"🍿 [Web] '{title}' jamais commencée, lancement S1E1.")
-                    executor.submit(worker_process, get_playback_url(mid, "episode", 1, 1, force_select))
+                    _url, _verbe = resoudre_lecture(mid, "episode", 1, 1, force_select)
+                    executor.submit(worker_process, _url, _verbe)
                     flash(f"📺 Série jamais commencée. Lancement S1E1 : {title}")
     return redirect(url_for('web.dashboard'))
 

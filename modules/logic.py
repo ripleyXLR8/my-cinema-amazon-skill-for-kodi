@@ -171,18 +171,52 @@ def get_playback_url(tmdb_id: int, media_type: str, season: Optional[int] = None
     if media_type == "movie": return f"{url}&tmdb_id={tmdb_id}&type=movie"
     return f"{url}&tmdb_id={tmdb_id}&season={season}&episode={episode}&type=episode"
 
-def worker_process(plugin_url: str) -> None:
+def resoudre_lecture(tmdb_id: int, media_type: str, season: Optional[int] = None,
+                     episode: Optional[int] = None, force_select: bool = False,
+                     titre: str = '', addonid: Optional[str] = None) -> Tuple[str, str]:
+    """(url, verbe JSON-RPC) pour lancer ce contenu.
+
+    Voie directe si elle est configurée ET qu'une recette existe pour l'addon
+    visé ; TMDb Helper dans tous les autres cas. Le repli est silencieux et sans
+    condition : une configuration directe incomplète ne doit jamais empêcher une
+    lecture qui marchait avant.
+    """
+    from modules import lecteurs
+    if lecteurs.mode_direct():
+        cible = addonid or lecteurs.lecteur_par_defaut()
+        if cible:
+            resultat = lecteurs.construire_url(cible, media_type, tmdb_id, titre,
+                                               season, episode, force_select)
+            if resultat:
+                logger.info(f"🎬 [Lecture] Contrôle direct de {lecteurs.nom_lecteur(cible)}.")
+                return resultat
+            logger.warning(f"⚠️ [Lecture] Pas de recette pour {cible}, repli sur TMDb Helper.")
+    return get_playback_url(tmdb_id, media_type, season, episode, force_select), 'play'
+
+def worker_process(plugin_url: str, verbe: str = 'play') -> None:
+    """Envoie l'ordre à Kodi. Le verbe depend de ce que rend l'addon vise.
+
+    Player.Open sert a LIRE, GUI.ActivateWindow a NAVIGUER. Demander a Kodi de
+    lire un dossier echoue en silence et le ramene a l'accueil : c'est le cas
+    des addons qui presentent d'abord une liste de resultats.
+    """
     if not wake_and_start_kodi(): return
     conf = get_app_config()
     url = get_kodi_url(conf)
-    if url:
-        auth = (conf.get("KODI_USER"), conf.get("KODI_PASS")) if conf.get("KODI_USER") else None
-        logger.info(f"▶️ [Lecture] Envoi de la requête JSON-RPC vers Kodi (Player.Open)")
-        try: 
-            requests.post(url, json={"jsonrpc": "2.0", "method": "Player.Open", "params": {"item": {"file": plugin_url}}, "id": 1}, auth=auth, timeout=5)
-            logger.info("✅ [Lecture] Ordre de lecture pris en compte par Kodi.")
-        except Exception as e:
-            logger.error(f"❌ [Lecture] Erreur exécution requête Kodi Player.Open: {e}")
+    if not url: return
+    auth = (conf.get("KODI_USER"), conf.get("KODI_PASS")) if conf.get("KODI_USER") else None
+    if verbe == 'activate':
+        methode = "GUI.ActivateWindow"
+        params = {"window": "videos", "parameters": [plugin_url]}
+    else:
+        methode = "Player.Open"
+        params = {"item": {"file": plugin_url}}
+    logger.info(f"▶️ [Lecture] Envoi de la requête JSON-RPC vers Kodi ({methode})")
+    try:
+        requests.post(url, json={"jsonrpc": "2.0", "method": methode, "params": params, "id": 1}, auth=auth, timeout=5)
+        logger.info("✅ [Lecture] Ordre pris en compte par Kodi.")
+    except Exception as e:
+        logger.error(f"❌ [Lecture] Erreur exécution requête Kodi {methode}: {e}")
 
 def get_kodi_active_player() -> Optional[int]:
     conf = get_app_config()

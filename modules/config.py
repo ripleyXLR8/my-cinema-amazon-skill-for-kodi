@@ -84,6 +84,12 @@ def get_app_config() -> Dict[str, str]:
         "PLAYER_DEFAULT": os.getenv("PLAYER_DEFAULT", "fenlight_auto.json"),
         "PLAYER_SELECT": os.getenv("PLAYER_SELECT", "fenlight_select.json"),
         "PROGRESS_ADDON": os.getenv("PROGRESS_ADDON", "plugin.video.pov"),
+        # Voie de commande des addons Kodi. "tmdb_helper" est le defaut et le
+        # reste : c'est la couche d'abstraction qui rend la skill compatible avec
+        # n'importe quel lecteur. "direct" ne sert qu'aux addons dont la recette
+        # est connue, et n'est jamais impose.
+        "CONTROL_MODE": os.getenv("CONTROL_MODE", "tmdb_helper"),
+        "DIRECT_PLAYERS": os.getenv("DIRECT_PLAYERS", ""),
         "WEB_UI_USERNAME": os.getenv("WEB_UI_USERNAME", "admin"),
         "WEB_UI_PASSWORD": os.getenv("WEB_UI_PASSWORD", "admin")
     }
