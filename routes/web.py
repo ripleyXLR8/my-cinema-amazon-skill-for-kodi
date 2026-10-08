@@ -10,7 +10,7 @@ from wakeonlan import send_magic_packet
 from modules.config import logger, get_app_config, save_app_config, get_kodi_url
 from modules import trakt
 from modules import lecteurs
-from modules.logic import is_device_online, is_device_awake, is_kodi_responsive, search_tmdb_movie, search_tmdb_show, get_next_episode, PROGRESSION_OK, PROGRESSION_INJOIGNABLE, get_tmdb_last_aired, get_playback_url, resoudre_lecture, worker_process
+from modules.logic import is_device_online, is_device_awake, is_kodi_responsive, search_tmdb_movie, search_tmdb_show, identifier_media, get_next_episode, PROGRESSION_OK, PROGRESSION_INJOIGNABLE, get_tmdb_last_aired, get_playback_url, resoudre_lecture, worker_process
 from modules.extensions import executor
 
 web_bp = Blueprint('web', __name__)
@@ -172,6 +172,47 @@ def web_play_route() -> Response:
                     executor.submit(worker_process, _url, _verbe)
                     flash(f"📺 Série jamais commencée. Lancement S1E1 : {title}")
     return redirect(url_for('web.dashboard'))
+
+@web_bp.route('/api/play', methods=['POST'])
+def api_play_route() -> Tuple[Response, int]:
+    """Lecture demandée par une domotique (ex. Alexa Smart Home via Jeedom) : JSON en entrée et en sortie.
+
+    {"query": "titre", "imdb": "tt…" (facultatif), "season": n, "episode": n (facultatifs)}
+    Le type (film ou série) est deviné, puisqu'une telle demande ne le précise pas.
+    Protégée par l'authentification de l'interface web, comme le reste de ce blueprint.
+    """
+    d = request.get_json(silent=True) or {}
+    query, lecteur = lecteurs.extraire_motcle((d.get('query') or '').strip())
+    season, episode = d.get('season'), d.get('episode')
+    if season:
+        mid, title = search_tmdb_show(query) if query else (None, None)
+        kind = 'tv'
+    else:
+        kind, mid, title = identifier_media(query, d.get('imdb'))
+    if not mid:
+        logger.info(f"🔎 [API] Rien trouvé pour '{query}' ({d.get('imdb') or 'sans IMDb'}).")
+        return jsonify(ok=False, message=f"Aucun film ni série pour « {query} »."), 404
+
+    if kind == 'movie':
+        logger.info(f"🍿 [API] Lancement du film '{title}'")
+        _url, _verbe = resoudre_lecture(mid, "movie", titre=title, addonid=lecteur)
+        executor.submit(worker_process, _url, _verbe)
+        return jsonify(ok=True, type='movie', title=title), 200
+
+    if season and episode:
+        s, e = int(season), int(episode)
+    else:
+        s, e, issue = get_next_episode(mid)
+        if issue == PROGRESSION_INJOIGNABLE:
+            # Même règle que partout : ne rien lancer plutôt que S1E1 au hasard.
+            logger.warning(f"⚠️ [API] Progression de '{title}' illisible : aucun lancement.")
+            return jsonify(ok=False, message=f"Progression de « {title} » illisible."), 503
+        if issue != PROGRESSION_OK:
+            s, e = (int(season), 1) if season else (1, 1)
+    logger.info(f"🍿 [API] Lancement série '{title}' (Saison {s} Épisode {e})")
+    _url, _verbe = resoudre_lecture(mid, "episode", s, e, titre=title, addonid=lecteur)
+    executor.submit(worker_process, _url, _verbe)
+    return jsonify(ok=True, type='tv', title=title, season=s, episode=e), 200
 
 @web_bp.route('/wake-device', methods=['POST'])
 def wake_device_route() -> Response:

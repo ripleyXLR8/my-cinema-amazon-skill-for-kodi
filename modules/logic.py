@@ -2,6 +2,7 @@
 import os
 import subprocess
 import time
+import unicodedata
 import requests
 import paramiko
 import logging
@@ -107,6 +108,61 @@ def search_tmdb_show(query: str, lang: str = "fr") -> Tuple[Optional[int], Optio
     except Exception as e:
         logger.error(f"Erreur recherche série TMDB '{query}': {e}")
         return None, None
+
+def _normaliser_titre(texte: str) -> str:
+    sans_accents = ''.join(c for c in unicodedata.normalize('NFD', texte or '') if unicodedata.category(c) != 'Mn')
+    return ''.join(c for c in sans_accents.lower() if c.isalnum())
+
+def choisir_media(query: str, films: list, series: list) -> Tuple[Optional[str], Optional[int], Optional[str]]:
+    """Film ou série ? Compare le premier résultat de chaque recherche TMDB.
+
+    Le titre exact (français ou original) l'emporte : « Band of Brothers » doit
+    trouver la série même si un film plus populaire porte un titre voisin. À
+    défaut de titre exact, ou si les deux le sont, le plus populaire gagne.
+    """
+    cible = _normaliser_titre(query)
+    candidats = []
+    if films:
+        f = films[0]
+        candidats.append(('movie', f['id'], f.get('title', ''), f.get('original_title', ''), f.get('popularity', 0)))
+    if series:
+        s = series[0]
+        candidats.append(('tv', s['id'], s.get('name', ''), s.get('original_name', ''), s.get('popularity', 0)))
+    if not candidats:
+        return None, None, None
+    exacts = [c for c in candidats if cible in (_normaliser_titre(c[2]), _normaliser_titre(c[3]))]
+    meilleur = max(exacts or candidats, key=lambda c: c[4])
+    return meilleur[0], meilleur[1], meilleur[2]
+
+def identifier_media(query: str, imdb: Optional[str] = None, lang: str = "fr") -> Tuple[Optional[str], Optional[int], Optional[str]]:
+    """('movie' | 'tv', id TMDB, titre) pour une demande dont on ignore le type.
+
+    Un identifiant IMDb (Alexa le fournit souvent) tranche sans ambiguïté ;
+    sinon on cherche à la fois parmi les films et les séries.
+    """
+    tmdb_key = get_app_config().get("TMDB_API_KEY")
+    if not tmdb_key:
+        return None, None, None
+    langue = "fr-FR" if lang == "fr" else "en-US"
+    try:
+        if imdb:
+            r = requests.get(f"https://api.themoviedb.org/3/find/{imdb}",
+                             params={"api_key": tmdb_key, "external_source": "imdb_id", "language": langue}, timeout=5).json()
+            if r.get('movie_results'):
+                m = r['movie_results'][0]
+                return 'movie', m['id'], m.get('title')
+            if r.get('tv_results'):
+                t = r['tv_results'][0]
+                return 'tv', t['id'], t.get('name')
+        if not query:
+            return None, None, None
+        params = {"api_key": tmdb_key, "query": query, "language": langue}
+        films = requests.get("https://api.themoviedb.org/3/search/movie", params=params, timeout=5).json().get('results') or []
+        series = requests.get("https://api.themoviedb.org/3/search/tv", params=params, timeout=5).json().get('results') or []
+    except Exception as e:
+        logger.error(f"Erreur identification TMDB '{query}' / {imdb}: {e}")
+        return None, None, None
+    return choisir_media(query, films, series)
 
 def check_episode_exists(tmdb_id: int, season: int, episode: int) -> bool:
     conf = get_app_config()
